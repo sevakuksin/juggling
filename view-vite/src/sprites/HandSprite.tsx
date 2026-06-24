@@ -3,8 +3,8 @@ import leftHandRaw from "@assets/left_hand.svg?raw";
 import { stripHandSvg } from "./stripHandSvg";
 
 export const HAND_ART_SIZE = 1254;
-/** Palm / wrist anchor in source artwork (1254×1254). */
-export const HAND_GRIP = { x: 900, y: 780 };
+/** Anchor at canvas center, shifted 15% lower in art (SVG y-down). */
+export const HAND_GRIP = { x: HAND_ART_SIZE / 2, y: (HAND_ART_SIZE / 2) * 1.15 };
 
 const HAND_PATHS_HTML = { __html: stripHandSvg(leftHandRaw) };
 
@@ -16,7 +16,7 @@ interface HandSpriteProps {
   className?: string;
 }
 
-/** Original left-hand art, anchored at the wrist on (x, y). Right = vertical mirror. */
+/** Original left-hand art, anchored at canvas center on (x, y). Right = vertical mirror. */
 export function HandSprite({ hand, x, y, sizeM = 0.52, className }: HandSpriteProps) {
   const scale = sizeM / HAND_ART_SIZE;
   const ox = -HAND_GRIP.x * scale;
