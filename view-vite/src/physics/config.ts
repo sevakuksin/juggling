@@ -1,3 +1,5 @@
+import { SceneUnits } from "./sceneScale";
+
 export interface PhysicsConfig {
   massKg: number;
   g: number;
@@ -15,15 +17,15 @@ export interface HandMotionConfig {
 export const DEFAULT_PHYSICS: PhysicsConfig = {
   massKg: 0.1,
   g: 9.81,
-  beatPeriodS: 0.5,
-  handSeparationM: 0.8,
-  handHeightM: 1.05,
-  ballRadiusM: 0.045,
+  beatPeriodS: SceneUnits.beatPeriodS,
+  handSeparationM: SceneUnits.handSeparation,
+  handHeightM: SceneUnits.handHeight,
+  ballRadiusM: SceneUnits.ballRadius,
 };
 
 export const DEFAULT_HAND_MOTION: HandMotionConfig = {
-  rxM: 0.1,
-  ryM: 0.06,
+  rxM: SceneUnits.ellipseRx,
+  ryM: SceneUnits.ellipseRy,
 };
 
 export function leftX(cfg: PhysicsConfig): number {

@@ -76,5 +76,7 @@ export function BallPreview({ value, size = 36 }: { value: number; size?: number
   );
 }
 
+import { ballDisplayRadiusM } from "@/physics/sceneScale";
+
 /** Display radius — slightly larger than physics for visibility on SVG stage. */
-export const BALL_DISPLAY_RADIUS = 0.055;
+export const BALL_DISPLAY_RADIUS = ballDisplayRadiusM();

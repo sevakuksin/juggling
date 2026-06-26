@@ -87,3 +87,57 @@ export function pointsToSvgPath(points: [number, number][]): string {
   }
   return d;
 }
+
+/** Time fractions along the arc where the ball is at targetY (0–2: up and down legs). */
+export function flightTimeFracsAtHeight(th: ProjectileThrow, targetY: number): number[] {
+  const [, y0] = th.startXy;
+  const vy = vy0(th);
+  const disc = vy * vy - 2 * th.g * (targetY - y0);
+  if (disc <= 1e-9) return [];
+  const sqrt = Math.sqrt(disc);
+  const fracs: number[] = [];
+  for (const tau of [(vy - sqrt) / th.g, (vy + sqrt) / th.g]) {
+    if (tau > th.tofS * 0.02 && tau < th.tofS * 0.98) {
+      fracs.push(tau / th.tofS);
+    }
+  }
+  return fracs.sort((a, b) => a - b);
+}
+
+/** Shared arrow height for multiple throws (lower portion of the arc). */
+export function sharedTrajectoryArrowHeight(
+  flights: ProjectileThrow[],
+  handHeightM: number,
+  fraction = 0.32,
+): number {
+  if (flights.length === 0) return handHeightM + 0.12;
+  const minApex = Math.min(...flights.map(apexHeightM));
+  const rise = Math.max(minApex - handHeightM, 0.05);
+  return handHeightM + rise * fraction;
+}
+
+/** Chevron arrow aligned with flight direction at a fraction along the arc. */
+export function trajectoryArrowD(
+  th: ProjectileThrow,
+  tFrac: number,
+  sizeM = 0.045,
+): string {
+  const tau = tFrac * th.tofS;
+  const t = th.startTimeS + tau;
+  const [x, y] = positionAt(th, t);
+  const vx = vx0(th);
+  const vy = vy0(th) - th.g * tau;
+  const len = Math.hypot(vx, vy) || 1;
+  const ux = vx / len;
+  const uy = vy / len;
+  const wing = sizeM * 0.42;
+  const px = -uy;
+  const py = ux;
+  const bx = x - ux * sizeM;
+  const by = y - uy * sizeM;
+  const x1 = bx + px * wing;
+  const y1 = by + py * wing;
+  const x2 = bx - px * wing;
+  const y2 = by - py * wing;
+  return `M ${x1} ${y1} L ${x} ${y} L ${x2} ${y2}`;
+}

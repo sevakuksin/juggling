@@ -11,6 +11,35 @@
   stroke-width: 0.018;
 }
 
+.meter-scale-axis {
+  stroke: #9aa8b8;
+  stroke-width: 0.014;
+}
+
+.meter-scale-tick {
+  stroke: #b8c0cc;
+  stroke-width: 0.012;
+}
+
+.meter-scale-label,
+.meter-scale-unit,
+.meter-scale-palm-label {
+  fill: #6b7a8f;
+  font-family: system-ui, sans-serif;
+  font-weight: 500;
+  text-anchor: start;
+  dominant-baseline: central;
+}
+
+.meter-scale-unit {
+  font-weight: 600;
+}
+
+.meter-scale-palm {
+  stroke: #c4a882;
+  stroke-width: 0.01;
+}
+
 .height-scale-tick {
   stroke: #b8c0cc;
   stroke-width: 0.012;
@@ -20,6 +49,13 @@
   stroke: #4a6d94;
   stroke-width: 0.022;
   stroke-dasharray: 0.05 0.035;
+}
+
+.trajectory-arrow {
+  stroke: #4a6d94;
+  stroke-width: 0.024;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .ellipse-guide {

@@ -1,9 +1,19 @@
 import type { HandId, PhysicsConfig } from "@/physics/config";
 import type { HandMotionConfig } from "@/physics/config";
-import { ellipsePoints, handPosition, handXyInside, handXyOutside } from "@/physics/hands";
-import { pointsToSvgPath, trajectoryPoints, type ProjectileThrow } from "@/physics/projectile";
+import { lenM } from "@/physics/sceneScale";
+import { ellipseLowerHalfPath, handPosition, handXyInside, handXyOutside, type HandMotionSchedules } from "@/physics/hands";
+import {
+  flightTimeFracsAtHeight,
+  pointsToSvgPath,
+  sharedTrajectoryArrowHeight,
+  trajectoryArrowD,
+  trajectoryPoints,
+  type ProjectileThrow,
+} from "@/physics/projectile";
 import { HandSprite } from "@/sprites/HandSprite";
 import { BallSprite } from "@/sprites/BallSprite";
+
+export { HeightScale, MeterScale } from "@/scene/MeterScale";
 
 interface GroundProps {
   bounds: { xMin: number; xMax: number; yMin: number };
@@ -21,36 +31,81 @@ export function GroundLine({ bounds }: GroundProps) {
   );
 }
 
-export function HeightScale({ yMax, x }: { yMax: number; x: number }) {
-  const ticks: number[] = [];
-  const step = yMax > 2.5 ? 0.5 : 0.25;
-  for (let y = 0; y <= yMax + 0.01; y += step) ticks.push(Math.round(y * 100) / 100);
-
+export function TrajectoryPath({
+  flight,
+  opacity = 0.28,
+  arrows = false,
+  arrowFracs,
+  arrowHeight,
+}: {
+  flight: ProjectileThrow;
+  opacity?: number;
+  arrows?: boolean;
+  arrowFracs?: number[];
+  /** Place arrows where the arc crosses this height (ascending + descending). */
+  arrowHeight?: number;
+}) {
+  if (flight.tofS <= 0) return null;
+  const d = pointsToSvgPath(trajectoryPoints(flight));
+  if (!d) return null;
+  const fracs =
+    arrows && arrowHeight != null
+      ? flightTimeFracsAtHeight(flight, arrowHeight)
+      : arrows
+        ? (arrowFracs ?? [])
+        : [];
   return (
-    <g className="height-scale">
-      {ticks.map((y) => (
-        <line key={y} x1={x} y1={y} x2={x + 0.06} y2={y} className="height-scale-tick" />
-      ))}
+    <g className="trajectory-group">
+      <path className="scene-trajectory" d={d} opacity={opacity} fill="none" />
+      {fracs.map((f, i) => {
+        const ad = trajectoryArrowD(flight, f);
+        return (
+          <path
+            key={i}
+            className="trajectory-arrow"
+            d={ad}
+            opacity={Math.min(1, opacity + 0.22)}
+            fill="none"
+          />
+        );
+      })}
     </g>
   );
 }
 
-export function TrajectoryPath({ flight, opacity = 0.7 }: { flight: ProjectileThrow; opacity?: number }) {
-  if (flight.tofS <= 0) return null;
-  const d = pointsToSvgPath(trajectoryPoints(flight));
-  if (!d) return null;
-  return <path className="scene-trajectory" d={d} opacity={opacity} fill="none" />;
+export function ThrowTrajectoryGuides({
+  left,
+  right,
+  handHeightM,
+  opacity = 0.28,
+}: {
+  left: ProjectileThrow | null;
+  right: ProjectileThrow | null;
+  handHeightM: number;
+  opacity?: number;
+}) {
+  const flights = [left, right].filter((f): f is ProjectileThrow => f != null);
+  if (flights.length === 0) return null;
+  const arrowHeight = sharedTrajectoryArrowHeight(flights, handHeightM);
+  return (
+    <>
+      {left && <TrajectoryPath flight={left} opacity={opacity} arrows arrowHeight={arrowHeight} />}
+      {right && <TrajectoryPath flight={right} opacity={opacity} arrows arrowHeight={arrowHeight} />}
+    </>
+  );
 }
 
 export function HandEllipses({
   cfg,
   motion,
+  schedules,
 }: {
   cfg: PhysicsConfig;
   motion: HandMotionConfig;
+  schedules?: HandMotionSchedules | null;
 }) {
-  const left = pointsToSvgPath(ellipsePoints("left", cfg, motion));
-  const right = pointsToSvgPath(ellipsePoints("right", cfg, motion));
+  const left = ellipseLowerHalfPath("left", cfg, motion, schedules);
+  const right = ellipseLowerHalfPath("right", cfg, motion, schedules);
   return (
     <g className="hand-ellipses">
       <path d={left} fill="none" className="ellipse-guide" />
@@ -72,16 +127,12 @@ export function ThrowCatchZones({
       {hands.map((hand) => {
         const [ti, yi] = handXyInside(hand, cfg, motion);
         const [to, yo] = handXyOutside(hand, cfg, motion);
+        const r = lenM(0.32);
+        const s = lenM(0.64);
         return (
           <g key={hand}>
-            <circle cx={ti} cy={yi} r={0.025} className="zone-throw" />
-            <rect
-              x={to - 0.025}
-              y={yo - 0.025}
-              width={0.05}
-              height={0.05}
-              className="zone-catch"
-            />
+            <circle cx={ti} cy={yi} r={r} className="zone-throw" />
+            <rect x={to - r} y={yo - r} width={s} height={s} className="zone-catch" />
           </g>
         );
       })}
@@ -93,6 +144,7 @@ interface AnimatedHandsProps {
   t: number;
   cfg: PhysicsConfig;
   motion: HandMotionConfig;
+  schedules?: HandMotionSchedules | null;
   showLeft?: boolean;
   showRight?: boolean;
 }
@@ -101,11 +153,12 @@ export function AnimatedHands({
   t,
   cfg,
   motion,
+  schedules,
   showLeft = true,
   showRight = true,
 }: AnimatedHandsProps) {
-  const left = handPosition("left", t, cfg, motion);
-  const right = handPosition("right", t, cfg, motion);
+  const left = handPosition("left", t, cfg, motion, schedules);
+  const right = handPosition("right", t, cfg, motion, schedules);
   return (
     <>
       {showLeft && <HandSprite hand="left" x={left.x} y={left.y} />}

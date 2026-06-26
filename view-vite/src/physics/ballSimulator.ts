@@ -10,6 +10,7 @@ import {
   insideBallSlot,
   outsideBallSlot,
   throwBeatForHand,
+  type HandMotionSchedules,
 } from "./hands";
 import { positionAt, type ProjectileThrow } from "./projectile";
 
@@ -34,6 +35,7 @@ export interface SimulatorParams {
   startHand: HandId;
   pendingThrow: number;
   dwellBeats: number;
+  handSchedules?: HandMotionSchedules | null;
 }
 
 const RESPAWN_S = 0.5;
@@ -44,8 +46,9 @@ export function heldBallPosition(
   t: number,
   cfg: PhysicsConfig,
   motion: HandMotionConfig,
+  schedules?: HandMotionSchedules | null,
 ): [number, number] {
-  const pose = handPosition(hand, t, cfg, motion);
+  const pose = handPosition(hand, t, cfg, motion, schedules);
   return [pose.x, pose.y + ballLiftM(cfg)];
 }
 
@@ -68,6 +71,20 @@ function makeFlight(
     startTimeS: releaseTimeS,
     label: String(throwValue),
   };
+}
+
+/** Static preview arc from a hand's throw slot to the landing catch slot. */
+export function previewThrowFromHand(
+  throwValue: number,
+  dwellBeats: number,
+  fromHand: HandId,
+  cfg: PhysicsConfig,
+  motion: HandMotionConfig,
+): ProjectileThrow | null {
+  if (throwValue <= 0) return null;
+  const d = Math.min(Math.max(0, dwellBeats), throwValue);
+  if (airTimeBeats(throwValue, d) <= 0) return null;
+  return makeFlight(throwValue, d, fromHand, 0, cfg, motion);
 }
 
 interface SimState {
@@ -120,6 +137,7 @@ function beginCatch(
   beatPeriod: number,
   motion: HandMotionConfig,
   cfg: PhysicsConfig,
+  schedules?: HandMotionSchedules | null,
 ): void {
   if (!s.flight) return;
   const throwVal = parseInt(s.flight.label, 10);
@@ -131,7 +149,7 @@ function beginCatch(
   s.catchStartS = landT;
   s.catchDeadlineS = landT + CATCH_TIMEOUT_BEATS * beatPeriod;
 
-  if (handNearOutside(s.catchingHand, landT, cfg, motion)) {
+  if (handNearOutside(s.catchingHand, landT, cfg, motion, schedules)) {
     finishCatch(s, landT, beatPeriod);
     return;
   }
@@ -157,11 +175,12 @@ function onRelease(
   b: number,
   cfg: PhysicsConfig,
   motion: HandMotionConfig,
+  schedules?: HandMotionSchedules | null,
 ): void {
   const n = s.label;
   const d = Math.min(s.pendingDwell, n);
   if (n === 0) {
-    const [dx, dy] = heldBallPosition(s.holdingHand, bt, cfg, motion);
+    const [dx, dy] = heldBallPosition(s.holdingHand, bt, cfg, motion, schedules);
     s.phase = "dropping";
     s.dropX = dx;
     s.dropY = dy;
@@ -200,12 +219,12 @@ function tickCatchTimeout(s: SimState, t: number, beatPeriod: number): void {
 }
 
 export function computeBallAt(t: number, params: SimulatorParams): BallSnapshot {
-  const { physics: cfg, motion, startHand, pendingThrow, dwellBeats } = params;
+  const { physics: cfg, motion, startHand, pendingThrow, dwellBeats, handSchedules } = params;
   const dwell = Math.min(Math.max(0, dwellBeats), pendingThrow);
   let s = freshState(startHand, pendingThrow, dwell);
 
   if (t <= 0) {
-    const [x, y] = heldBallPosition(s.holdingHand, 0, cfg, motion);
+    const [x, y] = heldBallPosition(s.holdingHand, 0, cfg, motion, handSchedules);
     return mkSnap(s, x, y);
   }
 
@@ -218,13 +237,13 @@ export function computeBallAt(t: number, params: SimulatorParams): BallSnapshot 
     if (s.phase === "airborne" && s.flight) {
       const landT = s.flight.startTimeS + s.flight.tofS;
       if (landT <= t && landT <= bt + 1e-9) {
-        beginCatch(s, landT, bp, motion, cfg);
+        beginCatch(s, landT, bp, motion, cfg, handSchedules);
       }
     }
 
     if (s.phase === "catching") {
       tickCatchTimeout(s, Math.min(t, bt), bp);
-      if (handNearOutside(s.catchingHand, Math.min(t, bt), cfg, motion)) {
+      if (handNearOutside(s.catchingHand, Math.min(t, bt), cfg, motion, handSchedules)) {
         finishCatch(s, Math.min(t, bt), bp);
       }
     }
@@ -251,18 +270,18 @@ export function computeBallAt(t: number, params: SimulatorParams): BallSnapshot 
     if (bt > t) break;
 
     if (canRelease(s, b, startHand)) {
-      onRelease(s, bt, b, cfg, motion);
+      onRelease(s, bt, b, cfg, motion, handSchedules);
     }
   }
 
   if (s.phase === "airborne" && s.flight) {
     const landT = s.flight.startTimeS + s.flight.tofS;
-    if (t >= landT) beginCatch(s, landT, bp, motion, cfg);
+    if (t >= landT) beginCatch(s, landT, bp, motion, cfg, handSchedules);
   }
 
   if (s.phase === "catching") {
     tickCatchTimeout(s, t, bp);
-    if (handNearOutside(s.catchingHand, t, cfg, motion)) {
+    if (handNearOutside(s.catchingHand, t, cfg, motion, handSchedules)) {
       finishCatch(s, t, bp);
     }
   }
@@ -297,7 +316,7 @@ export function computeBallAt(t: number, params: SimulatorParams): BallSnapshot 
     return { ...mkSnap(s, x, y), nextEventLabel: "catch" };
   }
 
-  const [x, y] = heldBallPosition(s.holdingHand, t, cfg, motion);
+  const [x, y] = heldBallPosition(s.holdingHand, t, cfg, motion, handSchedules);
   return mkSnap(s, x, y);
 }
 

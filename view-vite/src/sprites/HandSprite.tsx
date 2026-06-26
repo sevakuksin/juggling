@@ -1,5 +1,6 @@
 import type { HandId } from "@/physics/config";
 import leftHandRaw from "@assets/left_hand.svg?raw";
+import { handArtExtentM } from "@/physics/sceneScale";
 import { stripHandSvg } from "./stripHandSvg";
 
 export const HAND_ART_SIZE = 1254;
@@ -17,7 +18,7 @@ interface HandSpriteProps {
 }
 
 /** Original left-hand art, anchored at canvas center on (x, y). Right = vertical mirror. */
-export function HandSprite({ hand, x, y, sizeM = 0.52, className }: HandSpriteProps) {
+export function HandSprite({ hand, x, y, sizeM = handArtExtentM(), className }: HandSpriteProps) {
   const scale = sizeM / HAND_ART_SIZE;
   const ox = -HAND_GRIP.x * scale;
   // Art paths use SVG y-down; scene uses physics y-up — negate y scale only (not a hand flip).

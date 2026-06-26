@@ -13,7 +13,7 @@ import {
 } from "@/physics/vertical";
 import { verticalBounds } from "@/physics/throwBounds";
 import { SvgStage } from "@/scene/SvgStage";
-import { GroundLine, HeightScale, SceneBall, TrajectoryPath } from "@/scene/SceneLayers";
+import { GroundLine, SceneBall, TrajectoryPath } from "@/scene/SceneLayers";
 import { HandSprite } from "@/sprites/HandSprite";
 import { BALL_DISPLAY_RADIUS } from "@/sprites/BallSprite";
 
@@ -45,7 +45,6 @@ export function VerticalThrowScene() {
       animation={
         <SvgStage bounds={bounds}>
           <GroundLine bounds={bounds} />
-          <HeightScale yMax={bounds.yMax} x={bounds.xMin + 0.06} />
           <TrajectoryPath flight={throw_} />
           <HandSprite hand="left" x={0} y={handY} />
           <SceneBall x={bx} y={by} radius={BALL_DISPLAY_RADIUS} />
