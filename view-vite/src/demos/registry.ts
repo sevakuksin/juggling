@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import { VerticalThrowScene } from "@/demos/VerticalThrowScene";
 import { TwoHandThrowScene } from "@/demos/TwoHandThrowScene";
+import { PatternGalleryScene } from "@/demos/PatternGalleryScene";
 import { PatternScene } from "@/demos/PatternScene";
 import { ValidatorScene } from "@/demos/ValidatorScene";
 
@@ -30,15 +31,25 @@ export const DEMOS: DemoDefinition[] = [
     path: "two-hands",
     num: "2",
     navTitle: "Two hands",
-    navSubtitle: "Elliptical hand motion",
-    pageTitle: "One ball, two elliptical hands",
-    pageSubtitle: "Catch outside, throw inside. Change throw number — it applies at the next catch.",
-    description: "Siteswap throws with dwell time, inside→outside parabolas, and synced hand orbits.",
+    navSubtitle: "",
+    pageTitle: "Two hands",
+    pageSubtitle: "",
+    description: "",
     component: TwoHandThrowScene,
   },
   {
-    path: "pattern",
+    path: "patterns",
     num: "3",
+    navTitle: "Patterns",
+    navSubtitle: "",
+    pageTitle: "Patterns",
+    pageSubtitle: "",
+    description: "",
+    component: PatternGalleryScene,
+  },
+  {
+    path: "pattern",
+    num: "4",
     navTitle: "Pattern",
     navSubtitle: "Coming soon",
     pageTitle: "Pattern juggling",
@@ -48,7 +59,7 @@ export const DEMOS: DemoDefinition[] = [
   },
   {
     path: "validator",
-    num: "4",
+    num: "5",
     navTitle: "Validator",
     navSubtitle: "Valid / invalid siteswap",
     pageTitle: "Pattern validator",

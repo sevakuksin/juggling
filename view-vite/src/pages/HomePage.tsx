@@ -18,8 +18,8 @@ export function HomePage() {
               <span className="demo-card-num">{demo.num}</span>
               <div className="demo-card-body">
                 <h3 className="demo-card-title">{demo.navTitle}</h3>
-                <p className="demo-card-sub">{demo.navSubtitle}</p>
-                <p className="demo-card-desc">{demo.description}</p>
+                {demo.navSubtitle ? <p className="demo-card-sub">{demo.navSubtitle}</p> : null}
+                {demo.description ? <p className="demo-card-desc">{demo.description}</p> : null}
                 <span className="demo-card-cta">Open demo →</span>
               </div>
             </Link>

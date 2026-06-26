@@ -37,7 +37,7 @@ export function Layout({ children }: LayoutProps) {
               <span className="nav-num">{demo.num}</span>
               <span className="nav-text">
                 {demo.navTitle}
-                <small>{demo.navSubtitle}</small>
+                {demo.navSubtitle ? <small>{demo.navSubtitle}</small> : null}
               </span>
             </NavLink>
           ))}
@@ -65,7 +65,7 @@ export function DemoHeader({
       <span className="demo-num">{num}</span>
       <div>
         <h2 className="demo-title">{title}</h2>
-        <p className="demo-subtitle">{subtitle}</p>
+        {subtitle ? <p className="demo-subtitle">{subtitle}</p> : null}
       </div>
     </div>
   );

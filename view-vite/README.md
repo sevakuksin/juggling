@@ -19,6 +19,7 @@ Open the URL shown (typically http://localhost:5173).
 | Home | `/` |
 | Vertical throw | `/demo/vertical` |
 | Two hands | `/demo/two-hands` |
+| Patterns | `/demo/patterns` |
 | Pattern (placeholder) | `/demo/pattern` |
 | Validator | `/demo/validator` |
 

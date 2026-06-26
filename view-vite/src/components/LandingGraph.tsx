@@ -30,7 +30,7 @@ export function LandingGraph({ report, size = 240 }: LandingGraphProps) {
       viewBox={`0 0 ${size} ${size}`}
       aria-label="Siteswap landing graph"
     >
-      {values.map((v, i) => {
+      {values.map((_v, i) => {
         const target = residues[i];
         const x0 = nodeX(i);
         const y0 = nodeY(i);
