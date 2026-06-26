@@ -6,6 +6,7 @@ import {
   ballLiftM,
   firstThrowBeat,
   handNearOutside,
+  handNearOutsideBetween,
   handPosition,
   insideBallSlot,
   outsideBallSlot,
@@ -38,8 +39,7 @@ export interface SimulatorParams {
   handSchedules?: HandMotionSchedules | null;
 }
 
-const RESPAWN_S = 0.5;
-const CATCH_TIMEOUT_BEATS = 1.25;
+import { BALL_SIM } from "./twoHandThrowConfig";
 
 export function heldBallPosition(
   hand: HandId,
@@ -128,7 +128,19 @@ function freshState(startHand: HandId, pending: number, dwell: number): SimState
 }
 
 function beatIndexAt(timeS: number, beatPeriod: number): number {
-  return Math.round(timeS / beatPeriod - 1e-9);
+  return Math.floor(timeS / beatPeriod + 1e-9);
+}
+
+function catchHandNearOutside(
+  hand: HandId,
+  landT: number,
+  beatPeriod: number,
+  cfg: PhysicsConfig,
+  motion: HandMotionConfig,
+  schedules?: HandMotionSchedules | null,
+): boolean {
+  const probeEnd = landT + BALL_SIM.catchProbeBeats * beatPeriod;
+  return handNearOutsideBetween(hand, landT, probeEnd, cfg, motion, schedules);
 }
 
 function beginCatch(
@@ -147,9 +159,9 @@ function beginCatch(
   s.flight = null;
   s.lastCatchBeat = beatIndexAt(landT, beatPeriod);
   s.catchStartS = landT;
-  s.catchDeadlineS = landT + CATCH_TIMEOUT_BEATS * beatPeriod;
+  s.catchDeadlineS = landT + BALL_SIM.catchTimeoutBeats * beatPeriod;
 
-  if (handNearOutside(s.catchingHand, landT, cfg, motion, schedules)) {
+  if (catchHandNearOutside(s.catchingHand, landT, beatPeriod, cfg, motion, schedules)) {
     finishCatch(s, landT, beatPeriod);
     return;
   }
@@ -258,7 +270,7 @@ export function computeBallAt(t: number, params: SimulatorParams): BallSnapshot 
         const y = s.dropY - 0.5 * cfg.g * elapsed * elapsed;
         if (y <= cfg.handHeightM - ballLiftM(cfg)) {
           s.phase = "gone";
-          s.goneEndS = s.dropStartS + elapsed + RESPAWN_S;
+          s.goneEndS = s.dropStartS + elapsed + BALL_SIM.respawnS;
         }
       }
     }
@@ -312,7 +324,7 @@ export function computeBallAt(t: number, params: SimulatorParams): BallSnapshot 
   }
 
   if (s.phase === "catching") {
-    const [x, y] = outsideBallSlot(s.catchingHand, cfg, motion);
+    const [x, y] = heldBallPosition(s.catchingHand, t, cfg, motion, handSchedules);
     return { ...mkSnap(s, x, y), nextEventLabel: "catch" };
   }
 

@@ -1,17 +1,18 @@
 import type { HandId, PhysicsConfig } from "./config";
 import { landingHand } from "./config";
 import { airTimeBeats } from "./airTime";
+import { HAND_POSE_THETA, HAND_SCHEDULE, HAND_SPEED } from "./twoHandThrowConfig";
 
 const TAU = 2 * Math.PI;
 
 /** Throw pose (inside); x mirror is applied in handXyFromTheta. */
 export function handInsideTheta(_hand: HandId): number {
-  return 0;
+  return HAND_POSE_THETA.inside;
 }
 
 /** Catch pose (outside). */
 export function handOutsideTheta(_hand: HandId): number {
-  return Math.PI;
+  return HAND_POSE_THETA.outside;
 }
 
 export type HandEventKind = "throw" | "catch";
@@ -35,6 +36,8 @@ export interface HandMotionSchedule {
   hand: HandId;
   periodS: number;
   segments: HandMotionSegment[];
+  /** Left hand reuses the right schedule shifted by one beat (T_b). */
+  phaseOffsetS?: number;
 }
 
 export interface HandMotionSchedules {
@@ -42,15 +45,7 @@ export interface HandMotionSchedules {
   right: HandMotionSchedule;
 }
 
-/**
- * Speed along the ellipse (inner θ≈0, outer θ≈π; up/down are not waypoints).
- * - fromInside: fast leaving inner / throw, coast, soften into outer catch
- * - toInside: steady past outer, accelerate into inner throw
- */
-const SPEED = {
-  fromInside: { linear: 0.48, power: 1.95 },
-  toInside: { linear: 0.44, power: 2.3 },
-} as const;
+const SPEED = HAND_SPEED;
 
 function clamp01(u: number): number {
   return Math.max(0, Math.min(1, u));
@@ -60,13 +55,11 @@ function blend(u: number, curved: number, linearWeight: number): number {
   return linearWeight * u + (1 - linearWeight) * curved;
 }
 
-/** Inside → outside: quick off the inner edge, slow only near the outer side. */
 function easeFromInside(u: number): number {
   const { linear: lw, power: p } = SPEED.fromInside;
   return blend(u, 1 - (1 - u) ** p, lw);
 }
 
-/** Outside → inside: build speed into the inner throw, not a stop at the inner edge. */
 function easeToInside(u: number): number {
   const { linear: lw, power: p } = SPEED.toInside;
   return blend(u, u ** p, lw);
@@ -74,10 +67,6 @@ function easeToInside(u: number): number {
 
 function throwBeatForHand(hand: HandId, beatIndex: number): boolean {
   return hand === "right" ? beatIndex % 2 === 0 : beatIndex % 2 === 1;
-}
-
-function eventTheta(kind: HandEventKind): number {
-  return kind === "throw" ? handInsideTheta("right") : handOutsideTheta("right");
 }
 
 function unwrapForward(from: number, canonical: number): number {
@@ -97,22 +86,23 @@ function lerpAngle(theta0: number, theta1: number, u: number, easing: (t: number
   return theta0 + (theta1 - theta0) * easing(u);
 }
 
-function interpolateSegment(seg: HandMotionSegment, u: number): number {
-  const t = clamp01(u);
+function interpolateSegment(seg: HandMotionSegment, wt: number): number {
+  const span = seg.t1 - seg.t0;
+  const localU = span > 0 ? clamp01((wt - seg.t0) / span) : 0;
   switch (seg.profile) {
     case "toCatch":
-      return lerpAngle(seg.theta0, seg.theta1, t, easeFromInside);
+      return lerpAngle(seg.theta0, seg.theta1, localU, easeFromInside);
     case "toThrow":
-      return lerpAngle(seg.theta0, seg.theta1, t, easeToInside);
+      return lerpAngle(seg.theta0, seg.theta1, localU, easeToInside);
     case "lapInside": {
       const outside = unwrapForward(seg.theta0, handOutsideTheta("right"));
-      if (t < 0.5) return lerpAngle(seg.theta0, outside, t * 2, easeFromInside);
-      return lerpAngle(outside, seg.theta1, (t - 0.5) * 2, easeToInside);
+      if (localU < 0.5) return lerpAngle(seg.theta0, outside, localU * 2, easeFromInside);
+      return lerpAngle(outside, seg.theta1, (localU - 0.5) * 2, easeToInside);
     }
     case "lapOutside": {
       const inside = unwrapForward(seg.theta0, handInsideTheta("right"));
-      if (t < 0.5) return lerpAngle(seg.theta0, inside, t * 2, easeToInside);
-      return lerpAngle(inside, seg.theta1, (t - 0.5) * 2, easeFromInside);
+      if (localU < 0.5) return lerpAngle(seg.theta0, inside, localU * 2, easeToInside);
+      return lerpAngle(inside, seg.theta1, (localU - 0.5) * 2, easeFromInside);
     }
   }
 }
@@ -125,17 +115,17 @@ function wrapTime(t: number, period: number): number {
 }
 
 export function handThetaAt(t: number, schedule: HandMotionSchedule): number {
-  const { periodS, segments } = schedule;
+  const { periodS, segments, phaseOffsetS = 0 } = schedule;
   if (segments.length === 0) return 0;
 
-  const wt = wrapTime(t, periodS);
+  const wt = wrapTime(t - phaseOffsetS, periodS);
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
     const span = seg.t1 - seg.t0;
     if (span <= 0) continue;
-    const isLast = i === segments.length - 1;
-    if (wt >= seg.t0 && (wt < seg.t1 - 1e-9 || (isLast && wt <= seg.t1 + 1e-9))) {
-      return interpolateSegment(seg, (wt - seg.t0) / span);
+    if (wt >= seg.t0 - 1e-9 && wt <= seg.t1 + 1e-9) {
+      if (wt >= seg.t1 - 1e-9) return seg.theta1;
+      return interpolateSegment(seg, wt);
     }
   }
   return segments[segments.length - 1].theta1;
@@ -190,58 +180,43 @@ function collectEvents(
   return map;
 }
 
-function segmentEndTheta(from: number, toKind: HandEventKind, profile: SegmentProfile): number {
+function segmentEndTheta(from: number, profile: SegmentProfile): number {
+  if (profile === "toCatch") return unwrapForward(from, handOutsideTheta("right"));
+  if (profile === "toThrow") return unwrapForward(from, handInsideTheta("right"));
   if (profile === "lapInside" || profile === "lapOutside") return from + TAU;
-  return unwrapForward(from, eventTheta(toKind));
+  return from;
 }
 
-function defaultStartTheta(hand: HandId): number {
-  return hand === "left" ? Math.PI : 0;
-}
-
-function startTheta(hand: HandId, first: HandEvent): number {
-  if (first.t > 1e-9) return eventTheta(first.kind);
-  if (hand === "left" && first.kind === "catch") return Math.PI;
-  if (hand === "right" && first.kind === "throw") return 0;
-  return eventTheta(first.kind);
-}
-
-function buildSegmentsForHand(hand: HandId, events: HandEvent[], periodS: number): HandMotionSegment[] {
-  const merged = mergeEvents(events.filter((e) => e.t <= periodS + 1e-9));
-  if (merged.length === 0) {
-    const s = defaultStartTheta(hand);
-    return [{ t0: 0, t1: periodS, theta0: s, theta1: s + TAU, profile: "lapInside" }];
+/** Build from the right-hand event stream (throws on beat 0). */
+function buildSegments(events: HandEvent[], periodS: number): HandMotionSegment[] {
+  const loop = mergeEvents(events.filter((e) => e.t <= periodS + 1e-9));
+  if (loop.length === 0) {
+    return [{ t0: 0, t1: periodS, theta0: 0, theta1: TAU, profile: "lapInside" }];
   }
 
-  const loop = [...merged];
-  if (loop[0].t > 1e-9) {
-    loop.unshift({ t: 0, kind: loop[0].kind === "throw" ? "catch" : "throw" });
-  }
-
-  let theta = startTheta(hand, loop[0]);
+  const loopWithWrap = [...loop, { t: periodS, kind: loop[0].kind }];
+  let theta = handInsideTheta("right");
   const segments: HandMotionSegment[] = [];
 
   for (let i = 0; i < loop.length; i++) {
     const cur = loop[i];
-    const nxt = i + 1 < loop.length ? loop[i + 1] : { t: periodS, kind: loop[0].kind };
-    const t1 = i + 1 < loop.length ? nxt.t : periodS;
-    if (t1 - cur.t < 1e-9) continue;
+    const nxt = loopWithWrap[i + 1];
+    if (nxt.t - cur.t < 1e-9) continue;
 
     const profile = segmentProfile(cur.kind, nxt.kind);
-    const theta1 = segmentEndTheta(theta, nxt.kind, profile);
-    segments.push({ t0: cur.t, t1, theta0: theta, theta1, profile });
+    const theta1 = segmentEndTheta(theta, profile);
+    segments.push({ t0: cur.t, t1: nxt.t, theta0: theta, theta1, profile });
     theta = theta1;
   }
 
   if (segments.length === 0) {
-    const s = defaultStartTheta(hand);
-    segments.push({ t0: 0, t1: periodS, theta0: s, theta1: s + TAU, profile: "lapInside" });
+    segments.push({ t0: 0, t1: periodS, theta0: 0, theta1: TAU, profile: "lapInside" });
   }
 
   return segments;
 }
 
-/** Steady-state cascade: full ellipse, timed catches, accelerated throws. */
+/** Steady-state cascade: one schedule (right), left = same motion shifted by T_b. */
 export function buildHandSchedules(
   throwValue: number,
   dwellBeats: number,
@@ -249,12 +224,14 @@ export function buildHandSchedules(
 ): HandMotionSchedules | null {
   if (throwValue <= 0) return null;
 
-  const periodBeats = 2 * Math.max(2, throwValue);
+  const periodBeats =
+    HAND_SCHEDULE.minPeriodBeatsMultiplier *
+    Math.max(HAND_SCHEDULE.minThrowForPeriod, throwValue);
   const periodS = periodBeats * cfg.beatPeriodS;
-  const events = collectEvents(throwValue, dwellBeats, cfg, periodBeats);
+  const segments = buildSegments(collectEvents(throwValue, dwellBeats, cfg, periodBeats).get("right")!, periodS);
 
   return {
-    left: { hand: "left", periodS, segments: buildSegmentsForHand("left", events.get("left")!, periodS) },
-    right: { hand: "right", periodS, segments: buildSegmentsForHand("right", events.get("right")!, periodS) },
+    right: { hand: "right", periodS, segments, phaseOffsetS: 0 },
+    left: { hand: "left", periodS, segments, phaseOffsetS: cfg.beatPeriodS },
   };
 }

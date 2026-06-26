@@ -35,7 +35,8 @@ export function VerticalThrowScene() {
 
   const clock = useAnimationClock(tof, { loop: true });
   const bounds = useMemo(() => verticalBounds(tof, DEFAULT_PHYSICS.handHeightM), [tof]);
-  const [bx, by] = positionAt(throw_, Math.min(clock.simTime, throw_.tofS));
+  const phaseT = clock.simTime % tof;
+  const [bx, by] = positionAt(throw_, phaseT);
   const vy = verticalVelocityFromTof(tof);
   const apex = apexHeightFromTof(tof);
   const handY = DEFAULT_PHYSICS.handHeightM;

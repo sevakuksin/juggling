@@ -5,7 +5,6 @@ import {
   handInsideTheta,
   handOutsideTheta,
   handThetaAt,
-  type HandMotionSchedule,
   type HandMotionSchedules,
 } from "./handSchedule";
 
@@ -31,7 +30,7 @@ export function handPhaseRad(
   const sched = schedules?.[hand];
   if (sched) return handThetaAt(tAbs, sched);
   const omega = handOmega(cfg);
-  return hand === "left" ? Math.PI + omega * tAbs : omega * tAbs;
+  return omega * tAbs;
 }
 
 export function handXyFromTheta(
@@ -117,31 +116,37 @@ export function handNearOutside(
   return Math.hypot(pose.x - ox, pose.y - oy) <= epsM;
 }
 
+/** True if the hand is near outside at any sample in [t0, t1]. */
+export function handNearOutsideBetween(
+  hand: HandId,
+  t0: number,
+  t1: number,
+  cfg: PhysicsConfig,
+  motion: HandMotionConfig,
+  schedules?: HandMotionSchedules | null,
+  samples = 6,
+): boolean {
+  if (t1 <= t0) return handNearOutside(hand, t0, cfg, motion, schedules);
+  for (let i = 0; i <= samples; i++) {
+    const t = t0 + (i / samples) * (t1 - t0);
+    if (handNearOutside(hand, t, cfg, motion, schedules)) return true;
+  }
+  return false;
+}
+
+/** Geometric lower half of the hand ellipse (θ = π … 2π, y ≤ hand height). */
 export function ellipseLowerHalfPath(
   hand: HandId,
   cfg: PhysicsConfig,
   motion: HandMotionConfig,
-  schedules?: HandMotionSchedules | null,
+  _schedules?: HandMotionSchedules | null,
   n = 80,
 ): string {
-  const centerY = cfg.handHeightM;
-  const sched = schedules?.[hand];
-  const period = sched?.periodS ?? 2 * cfg.beatPeriodS;
   let d = "";
-  let penDown = false;
   for (let i = 0; i <= n; i++) {
-    const t = (i / n) * period;
-    const { x, y } = handPosition(hand, t, cfg, motion, schedules);
-    if (y > centerY + 1e-6) {
-      penDown = false;
-      continue;
-    }
-    if (!penDown) {
-      d += `${d ? " " : ""}M ${x} ${y}`;
-      penDown = true;
-    } else {
-      d += ` L ${x} ${y}`;
-    }
+    const theta = Math.PI + (i / n) * Math.PI;
+    const [x, y] = handXyFromTheta(hand, theta, cfg, motion);
+    d += i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`;
   }
   return d;
 }

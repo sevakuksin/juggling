@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DemoLayout } from "@/components/DemoLayout";
 import { StatRow } from "@/components/Layout";
 import { FreeTimeControls } from "@/components/TimeControls";
@@ -9,7 +9,18 @@ import { computeBallAt, previewThrowFromHand } from "@/physics/ballSimulator";
 import { airTimeBeats } from "@/physics/airTime";
 import { buildHandSchedules, handPhaseRad } from "@/physics/hands";
 import { PALM_M } from "@/physics/sceneScale";
-import { twoHandBounds, yMaxForThrow } from "@/physics/throwBounds";
+import { twoHandBounds } from "@/physics/throwBounds";
+import {
+  BEAT_PERIOD,
+  BALL_SIM,
+  clampDwell,
+  DWELL,
+  dwellRangeForThrow,
+  HAND_SEP,
+  HEIGHT_ZOOM,
+  SCRUB_WINDOW_S,
+  stageYMaxM,
+} from "@/physics/twoHandThrowConfig";
 import { SvgStage } from "@/scene/SvgStage";
 import {
   AnimatedHands,
@@ -23,26 +34,20 @@ import { BallPreview, BALL_DISPLAY_RADIUS } from "@/sprites/BallSprite";
 
 import { useCatchHitSound } from "@/hooks/useCatchHitSound";
 
-const WINDOW_S = 8;
-const DWELL_MIN = 0.8;
-const DWELL_MAX = 1;
-const DWELL_DEFAULT = 0.8;
-const BEAT_PERIOD_MIN = 0.15;
-const BEAT_PERIOD_MAX = 0.4;
-const BEAT_PERIOD_DEFAULT = 0.35;
-
-function clampDwell(d: number): number {
-  return Math.min(DWELL_MAX, Math.max(DWELL_MIN, d));
-}
-
 export function TwoHandThrowScene() {
   const [startHand, setStartHand] = useState<HandId>("right");
   const [pendingThrow, setPendingThrow] = useState(3);
-  const [dwellBeats, setDwellBeats] = useState(DWELL_DEFAULT);
-  const [beatPeriod, setBeatPeriod] = useState(BEAT_PERIOD_DEFAULT);
+  const [dwellBeats, setDwellBeats] = useState<number>(DWELL.default);
+  const [beatPeriod, setBeatPeriod] = useState<number>(BEAT_PERIOD.default);
   const [handSep, setHandSep] = useState(DEFAULT_PHYSICS.handSeparationM);
   const [windowOffset, setWindowOffset] = useState(0);
-  const [heightZoom, setHeightZoom] = useState(1.0);
+  const [heightZoom, setHeightZoom] = useState<number>(HEIGHT_ZOOM.default);
+
+  const dwellRange = dwellRangeForThrow(pendingThrow);
+
+  useEffect(() => {
+    setDwellBeats((prev) => clampDwell(prev, pendingThrow));
+  }, [pendingThrow]);
 
   const physics = useMemo(
     () => ({ ...DEFAULT_PHYSICS, beatPeriodS: beatPeriod, handSeparationM: handSep }),
@@ -50,7 +55,7 @@ export function TwoHandThrowScene() {
   );
 
   const handSchedules = useMemo(() => {
-    const d = pendingThrow > 0 ? clampDwell(dwellBeats) : 0;
+    const d = pendingThrow > 0 ? clampDwell(dwellBeats, pendingThrow) : 0;
     return buildHandSchedules(pendingThrow, d, physics);
   }, [pendingThrow, dwellBeats, physics]);
 
@@ -60,7 +65,7 @@ export function TwoHandThrowScene() {
       motion: DEFAULT_HAND_MOTION,
       startHand,
       pendingThrow,
-      dwellBeats: pendingThrow > 0 ? clampDwell(dwellBeats) : 0,
+      dwellBeats: pendingThrow > 0 ? clampDwell(dwellBeats, pendingThrow) : 0,
       handSchedules,
     }),
     [physics, startHand, pendingThrow, dwellBeats, handSchedules],
@@ -72,13 +77,12 @@ export function TwoHandThrowScene() {
   useCatchHitSound(ball.phase);
 
   const bounds = useMemo(() => {
-    const d = pendingThrow > 0 ? clampDwell(dwellBeats) : 0;
-    const yMax = yMaxForThrow(pendingThrow, d, physics, DEFAULT_HAND_MOTION, heightZoom, startHand);
+    const yMax = stageYMaxM(heightZoom);
     return twoHandBounds(handSep, DEFAULT_HAND_MOTION.rxM, yMax, physics.handHeightM);
-  }, [handSep, pendingThrow, dwellBeats, physics, heightZoom, startHand]);
+  }, [handSep, heightZoom, physics.handHeightM]);
 
   const previewFlights = useMemo(() => {
-    const d = pendingThrow > 0 ? clampDwell(dwellBeats) : 0;
+    const d = pendingThrow > 0 ? clampDwell(dwellBeats, pendingThrow) : 0;
     if (pendingThrow <= 0) return { left: null, right: null };
     return {
       left: previewThrowFromHand(pendingThrow, d, "left", physics, DEFAULT_HAND_MOTION),
@@ -87,7 +91,7 @@ export function TwoHandThrowScene() {
   }, [pendingThrow, dwellBeats, physics]);
 
   const beat = displayT / beatPeriod;
-  const d = pendingThrow > 0 ? clampDwell(dwellBeats) : 0;
+  const d = pendingThrow > 0 ? clampDwell(dwellBeats, pendingThrow) : 0;
   const airBeats = airTimeBeats(pendingThrow, d);
   const airTimeStr = (airBeats * beatPeriod).toFixed(2);
   const dwellDisplay = d.toFixed(2);
@@ -161,7 +165,7 @@ export function TwoHandThrowScene() {
                 <input
                   type="range"
                   min={0}
-                  max={13}
+                  max={BALL_SIM.maxThrow}
                   step={1}
                   value={pendingThrow}
                   onChange={(e) => setPendingThrow(parseInt(e.target.value, 10))}
@@ -174,11 +178,13 @@ export function TwoHandThrowScene() {
                 Dwell D (beats in hand)
                 <input
                   type="range"
-                  min={DWELL_MIN}
-                  max={DWELL_MAX}
-                  step={0.05}
+                  min={dwellRange.min}
+                  max={dwellRange.max}
+                  step={DWELL.step}
                   value={d}
-                  onChange={(e) => setDwellBeats(clampDwell(parseFloat(e.target.value)))}
+                  onChange={(e) =>
+                    setDwellBeats(clampDwell(parseFloat(e.target.value), pendingThrow))
+                  }
                 />
                 <span className="control-value">
                   D={dwellDisplay} · air = (n−D)={airBeatsDisplay} beats = {airTimeStr} s
@@ -189,22 +195,22 @@ export function TwoHandThrowScene() {
               Height zoom
               <input
                 type="range"
-                min={0.6}
-                max={2.5}
+                min={HEIGHT_ZOOM.min}
+                max={HEIGHT_ZOOM.max}
                 step={0.05}
                 value={heightZoom}
                 onChange={(e) => setHeightZoom(parseFloat(e.target.value))}
               />
               <span className="control-value">
-                {heightZoom.toFixed(2)}× · top {bounds.yMax.toFixed(1)} m
+                {heightZoom.toFixed(2)}× · 0–{bounds.yMax.toFixed(1)} m
               </span>
             </label>
             <label className="control-label">
               Beat period T_b (s)
               <input
                 type="range"
-                min={BEAT_PERIOD_MIN}
-                max={BEAT_PERIOD_MAX}
+                min={BEAT_PERIOD.min}
+                max={BEAT_PERIOD.max}
                 step={0.01}
                 value={beatPeriod}
                 onChange={(e) => setBeatPeriod(parseFloat(e.target.value))}
@@ -217,9 +223,9 @@ export function TwoHandThrowScene() {
               Hand separation (m)
               <input
                 type="range"
-                min={4 * PALM_M}
-                max={14 * PALM_M}
-                step={0.25 * PALM_M}
+                min={HAND_SEP.minPalms * PALM_M}
+                max={HAND_SEP.maxPalms * PALM_M}
+                step={HAND_SEP.stepPalms * PALM_M}
                 value={handSep}
                 onChange={(e) => setHandSep(parseFloat(e.target.value))}
               />
@@ -230,7 +236,7 @@ export function TwoHandThrowScene() {
           </div>
           <FreeTimeControls
             simTime={clock.simTime}
-            windowS={WINDOW_S}
+            windowS={SCRUB_WINDOW_S}
             playing={clock.playing}
             speed={clock.speed}
             onTogglePlay={clock.togglePlay}
@@ -254,7 +260,10 @@ export function TwoHandThrowScene() {
           <StatRow label="Phase" value={ball.phase} />
           <StatRow label="Next event" value={ball.nextEventLabel} />
           <p className="hint">
-            Air time is <strong>(n − D) × T_b</strong>. D defaults to 0.8 beats in hand after each catch.
+            Air time is <strong>(n − D) × T_b</strong>.
+            {pendingThrow === 1
+              ? " For n=1, D is 0.1–0.4 beats (default 0.25)."
+              : " D defaults to 0.8 beats in hand after each catch."}
           </p>
         </>
       }
