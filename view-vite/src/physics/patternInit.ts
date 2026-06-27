@@ -1,8 +1,69 @@
-import type { HandId } from "./config";
-import { oppositeHand } from "./config";
+import {
+  landingHand,
+  oppositeHand,
+  type HandId,
+} from "./config";
+import { airTimeBeats } from "./airTime";
 import { firstThrowBeat, throwBeatForHand } from "./hands";
 import type { PatternDefinition } from "./patternCatalog";
 import { patternValues } from "./patternCatalog";
+import { HAND_SCHEDULE } from "./twoHandThrowConfig";
+
+/** Beat index when the low hand catches an incoming high throw (same beat as its throw 1). */
+export function showerLowMultiplexCatchBeats(
+  pattern: PatternDefinition,
+  startHand: HandId,
+  highDwell: number,
+  periodBeats: number,
+): Set<number> {
+  const beats = new Set<number>();
+  if (pattern.family !== "shower" || pattern.reverseHighThrow == null) return beats;
+  const lowHand = oppositeHand(startHand);
+  const highThrow = pattern.reverseHighThrow;
+  const air = airTimeBeats(highThrow, highDwell);
+  if (air <= 0) return beats;
+  for (let b = 0; b < periodBeats; b++) {
+    if (!throwBeatForHand(startHand, b)) continue;
+    if (landingHand(startHand, highThrow) !== lowHand) continue;
+    beats.add(b + air);
+  }
+  return beats;
+}
+
+/** Wall-clock release for a scheduled throw (low-hand multiplex throws are delayed). */
+export function showerThrowReleaseTimeS(
+  pattern: PatternDefinition,
+  startHand: HandId,
+  hand: HandId,
+  beat: number,
+  beatPeriodS: number,
+  highDwell: number,
+  periodBeats: number,
+): number {
+  const bt = beat * beatPeriodS;
+  if (pattern.family !== "shower" || hand !== oppositeHand(startHand)) return bt;
+  const multiplex = showerLowMultiplexCatchBeats(pattern, startHand, highDwell, periodBeats);
+  if (multiplex.has(beat)) {
+    return bt + HAND_SCHEDULE.showerCatchThenThrowFrac * beatPeriodS;
+  }
+  return bt;
+}
+
+/** Force catch on landing when hand-probe timing is unreliable. */
+export function showerForceCatchOnLanding(
+  pattern: PatternDefinition,
+  startHand: HandId,
+  throwValue: number,
+  catchingHand: HandId,
+  landsGeometricInside: boolean,
+): boolean {
+  if (landsGeometricInside) return true;
+  if (pattern.family !== "shower" || pattern.reverseHighThrow == null) return false;
+  return (
+    throwValue === pattern.reverseHighThrow &&
+    catchingHand === oppositeHand(startHand)
+  );
+}
 
 export interface HandStacks {
   left: number[];
@@ -120,4 +181,38 @@ export function scheduledHandAtBeat(startHand: HandId, beat: number): HandId | n
   if (beat < base) return null;
   const k = beat - base;
   return k % 2 === 0 ? startHand : oppositeHand(startHand);
+}
+
+/** Index into siteswap period for a steady-state beat (≥ 0), or −1 during startup. */
+export function throwIndexAtBeat(
+  pattern: PatternDefinition,
+  startHand: HandId,
+  beat: number,
+): number {
+  return beat - siteswapStartBeat(pattern, startHand);
+}
+
+/** Next throw height in the siteswap cycle after this beat's throw. */
+export function nextPatternThrowValue(
+  pattern: PatternDefinition,
+  startHand: HandId,
+  beat: number,
+): number {
+  const values = patternValues(pattern);
+  const idx = throwIndexAtBeat(pattern, startHand, beat);
+  if (idx < 0) return values[0] ?? 1;
+  return values[(idx + 1) % values.length];
+}
+
+/** Throw height scheduled at a global beat (startup + siteswap). */
+export function throwValueForBeat(
+  pattern: PatternDefinition,
+  startHand: HandId,
+  beat: number,
+): number {
+  const startBeat = siteswapStartBeat(pattern, startHand);
+  if (beat < startBeat) {
+    return showerStartupThrows(pattern, startHand).find((e) => e.beat === beat)?.value ?? 0;
+  }
+  return siteswapThrowValue(pattern, startHand, beat);
 }

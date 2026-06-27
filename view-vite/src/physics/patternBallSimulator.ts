@@ -2,6 +2,8 @@ import type { HandId, HandMotionConfig, PhysicsConfig } from "./config";
 import type { HandMotionSchedules } from "./hands";
 import {
   ballLiftM,
+  handNearInside,
+  handNearInsideBetween,
   handNearOutside,
   handNearOutsideBetween,
   throwBeatForHand,
@@ -12,20 +14,19 @@ import type { PatternDefinition } from "./patternCatalog";
 import {
   initialStacks,
   scheduledHandAtBeat,
+  showerForceCatchOnLanding,
+  showerLowMultiplexCatchBeats,
   showerStartupThrows,
+  showerThrowReleaseTimeS,
   siteswapStartBeat,
   siteswapThrowValue,
   type HandStacks,
 } from "./patternInit";
-import {
-  catchSlot,
-  landingHandForPattern,
-  motionFlagsForPattern,
-  throwSlot,
-  type PatternMotionFlags,
-} from "./patternMotion";
+import { catchSlot, landingHandForPattern, motionFlagsForPattern, throwSlot, type PatternMotionFlags } from "./patternMotion";
+import { oppositeHand } from "./config";
+import { catchProbeGeometricInside, throwMotionSpec } from "./throwMotion";
 import { positionAt, type ProjectileThrow } from "./projectile";
-import { BALL_SIM } from "./twoHandThrowConfig";
+import { BALL_SIM, HAND_SCHEDULE, showerDwellBeats } from "./twoHandThrowConfig";
 
 export type PatternBallPhase = "inHand" | "airborne" | "catching" | "dwell";
 
@@ -58,12 +59,15 @@ interface BallState {
   catchDeadlineS: number;
   dwellEndS: number;
   label: number;
+  catchGeometricInside: boolean;
 }
 
 interface SimContext {
   balls: BallState[];
   stacks: HandStacks;
   flags: PatternMotionFlags;
+  pattern: PatternDefinition;
+  startHand: HandId;
   dwell: number;
 }
 
@@ -73,14 +77,34 @@ function stackIndexForBall(stacks: HandStacks, ballId: number, hand: HandId): nu
   return idx >= 0 ? idx : 0;
 }
 
-function popTop(stacks: HandStacks, hand: HandId): number | null {
-  const stack = hand === "left" ? stacks.left : stacks.right;
+function popForThrow(
+  ctx: SimContext,
+  hand: HandId,
+  beat: number,
+  periodBeats: number,
+): number | null {
+  const stack = hand === "left" ? ctx.stacks.left : ctx.stacks.right;
   if (stack.length === 0) return null;
+  const multiplex =
+    ctx.pattern.family === "shower" &&
+    hand === oppositeHand(ctx.startHand) &&
+    showerLowMultiplexCatchBeats(ctx.pattern, ctx.startHand, ctx.dwell, periodBeats).has(beat);
+  if (multiplex) return stack.shift() ?? null;
   return stack.pop() ?? null;
 }
 
 function pushBall(stacks: HandStacks, hand: HandId, ballId: number): void {
-  (hand === "left" ? stacks.left : stacks.right).push(ballId);
+  const stack = hand === "left" ? stacks.left : stacks.right;
+  if (stack.includes(ballId)) return;
+  stack.push(ballId);
+}
+
+function showerPeriodBeats(pattern: PatternDefinition): number {
+  const highThrow = pattern.reverseHighThrow ?? HAND_SCHEDULE.minThrowForPeriod;
+  return (
+    HAND_SCHEDULE.minPeriodBeatsMultiplier *
+    Math.max(HAND_SCHEDULE.minThrowForPeriod, highThrow)
+  );
 }
 
 function makePatternFlight(
@@ -88,20 +112,25 @@ function makePatternFlight(
   dwellBeats: number,
   fromHand: HandId,
   releaseTimeS: number,
+  beat: number,
   cfg: PhysicsConfig,
   motion: HandMotionConfig,
+  pattern: PatternDefinition,
+  startHand: HandId,
   flags: PatternMotionFlags,
 ): ProjectileThrow {
+  const spec = throwMotionSpec(pattern, throwValue, beat, startHand);
   const toHand = landingHandForPattern(fromHand, throwValue, flags);
   const tofS = airTimeS(throwValue, dwellBeats, cfg.beatPeriodS);
   return {
-    startXy: throwSlot(fromHand, cfg, motion, flags),
-    endXy: catchSlot(toHand, cfg, motion, flags),
+    startXy: throwSlot(fromHand, cfg, motion, spec),
+    endXy: catchSlot(toHand, cfg, motion, spec),
     tofS,
     massKg: cfg.massKg,
     g: cfg.g,
     startTimeS: releaseTimeS,
     label: String(throwValue),
+    landsGeometricInside: catchProbeGeometricInside(spec),
   };
 }
 
@@ -119,16 +148,33 @@ function heldPosWithStack(
   return [x, y + lift];
 }
 
-function catchHandNearOutside(
+function catchHandNearSlot(
   hand: HandId,
   landT: number,
   beatPeriod: number,
   cfg: PhysicsConfig,
   motion: HandMotionConfig,
-  schedules?: HandMotionSchedules | null,
+  schedules: HandMotionSchedules | null | undefined,
+  catchGeometricInside: boolean,
 ): boolean {
   const probeEnd = landT + BALL_SIM.catchProbeBeats * beatPeriod;
+  if (catchGeometricInside) {
+    return handNearInsideBetween(hand, landT, probeEnd, cfg, motion, schedules);
+  }
   return handNearOutsideBetween(hand, landT, probeEnd, cfg, motion, schedules);
+}
+
+function handNearCatchSlot(
+  hand: HandId,
+  t: number,
+  cfg: PhysicsConfig,
+  motion: HandMotionConfig,
+  schedules: HandMotionSchedules | null | undefined,
+  catchGeometricInside: boolean,
+): boolean {
+  return catchGeometricInside
+    ? handNearInside(hand, t, cfg, motion, schedules)
+    : handNearOutside(hand, t, cfg, motion, schedules);
 }
 
 function finishCatch(ball: BallState, landT: number, beatPeriod: number, dwell: number): void {
@@ -140,6 +186,14 @@ function finishCatch(ball: BallState, landT: number, beatPeriod: number, dwell: 
     ball.dwellEndS = landT + dwell * beatPeriod;
   } else {
     ball.phase = "inHand";
+  }
+}
+
+function forceFinishCatchingOnHand(ctx: SimContext, hand: HandId, t: number, bp: number): void {
+  for (const ball of ctx.balls) {
+    if (ball.phase !== "catching" || ball.catchingHand !== hand) continue;
+    finishCatch(ball, t, bp, dwellAfterCatch(ctx, hand));
+    pushBall(ctx.stacks, ball.holdingHand, ball.id);
   }
 }
 
@@ -189,15 +243,33 @@ function freshContext(
       catchDeadlineS: -1,
       dwellEndS: -1,
       label: 0,
+      catchGeometricInside: false,
     });
   }
-  return { balls, stacks, flags: motionFlagsForPattern(pattern), dwell };
+  return { balls, stacks, flags: motionFlagsForPattern(pattern), pattern, startHand, dwell };
+}
+
+function dwellForThrow(ctx: SimContext, throwValue: number): number {
+  if (ctx.pattern.family === "shower") {
+    return showerDwellBeats(ctx.dwell, throwValue);
+  }
+  return Math.min(ctx.dwell, throwValue);
+}
+
+/** Dwell after catch: shower hands use their own throw height, not the incoming ball. */
+function dwellAfterCatch(ctx: SimContext, hand: HandId): number {
+  if (ctx.pattern.family === "shower" && ctx.pattern.reverseHighThrow != null) {
+    const throwVal = hand === ctx.startHand ? ctx.pattern.reverseHighThrow : 1;
+    return showerDwellBeats(ctx.dwell, throwVal);
+  }
+  return ctx.dwell;
 }
 
 function releaseBall(
   ctx: SimContext,
   ballId: number,
   throwValue: number,
+  beat: number,
   bt: number,
   cfg: PhysicsConfig,
   motion: HandMotionConfig,
@@ -206,14 +278,26 @@ function releaseBall(
   ball.label = throwValue;
   if (throwValue <= 0) return;
 
-  const d = Math.min(ctx.dwell, throwValue);
+  const d = dwellForThrow(ctx, throwValue);
   const airBeats = airTimeBeats(throwValue, d);
   if (airBeats <= 0) {
     ball.phase = "dwell";
     ball.dwellEndS = bt + d * cfg.beatPeriodS;
+    pushBall(ctx.stacks, ball.holdingHand, ballId);
     return;
   }
-  ball.flight = makePatternFlight(throwValue, d, ball.holdingHand, bt, cfg, motion, ctx.flags);
+  ball.flight = makePatternFlight(
+    throwValue,
+    d,
+    ball.holdingHand,
+    bt,
+    beat,
+    cfg,
+    motion,
+    ctx.pattern,
+    ctx.startHand,
+    ctx.flags,
+  );
   ball.phase = "airborne";
 }
 
@@ -230,13 +314,27 @@ function processLandings(
     const landT = ball.flight.startTimeS + ball.flight.tofS;
     if (landT <= t) {
       const throwVal = parseInt(ball.flight.label, 10);
+      const catchGeometricInside = ball.flight.landsGeometricInside ?? false;
       ball.catchingHand = landingHandForPattern(ball.holdingHand, throwVal, ctx.flags);
+      forceFinishCatchingOnHand(ctx, ball.catchingHand, landT, bp);
+      ball.catchGeometricInside = catchGeometricInside;
+      ball.label = throwVal;
       ball.flight = null;
       ball.catchStartS = landT;
       ball.catchDeadlineS = landT + BALL_SIM.catchTimeoutBeats * bp;
       ball.phase = "catching";
-      if (catchHandNearOutside(ball.catchingHand, landT, bp, cfg, motion, schedules)) {
-        finishCatch(ball, landT, bp, ctx.dwell);
+      if (
+        catchGeometricInside ||
+        showerForceCatchOnLanding(
+          ctx.pattern,
+          ctx.startHand,
+          throwVal,
+          ball.catchingHand,
+          catchGeometricInside,
+        ) ||
+        catchHandNearSlot(ball.catchingHand, landT, bp, cfg, motion, schedules, catchGeometricInside)
+      ) {
+        finishCatch(ball, landT, bp, dwellAfterCatch(ctx, ball.catchingHand));
         pushBall(ctx.stacks, ball.holdingHand, ball.id);
       }
     }
@@ -247,7 +345,7 @@ function processCatching(ctx: SimContext, t: number, bp: number): void {
   for (const ball of ctx.balls) {
     if (ball.phase !== "catching") continue;
     if (ball.catchDeadlineS >= 0 && t >= ball.catchDeadlineS) {
-      finishCatch(ball, ball.catchStartS, bp, ctx.dwell);
+      finishCatch(ball, ball.catchStartS, bp, dwellAfterCatch(ctx, ball.catchingHand));
       pushBall(ctx.stacks, ball.holdingHand, ball.id);
     }
   }
@@ -283,40 +381,67 @@ export function computePatternAt(t: number, params: PatternSimulatorParams): Pat
 
   const bp = cfg.beatPeriodS;
   const maxBeat = Math.ceil(t / bp) + 2;
+  const periodBeats = showerPeriodBeats(pattern);
 
   for (let b = 0; b <= maxBeat; b++) {
-    const bt = b * bp;
+    const beatStart = b * bp;
+    const beatEnd = (b + 1) * bp;
+    const processTo = Math.min(t, beatEnd);
 
-    processLandings(ctx, Math.min(t, bt), bp, cfg, motion, handSchedules);
-    processCatching(ctx, Math.min(t, bt), bp);
+    processLandings(ctx, processTo, bp, cfg, motion, handSchedules);
+    processCatching(ctx, processTo, bp);
 
     for (const ball of ctx.balls) {
       if (
         ball.phase === "catching" &&
-        handNearOutside(ball.catchingHand, Math.min(t, bt), cfg, motion, handSchedules)
+        handNearCatchSlot(
+          ball.catchingHand,
+          processTo,
+          cfg,
+          motion,
+          handSchedules,
+          ball.catchGeometricInside,
+        )
       ) {
-        finishCatch(ball, Math.min(t, bt), bp, ctx.dwell);
+        finishCatch(ball, processTo, bp, dwellAfterCatch(ctx, ball.catchingHand));
         pushBall(ctx.stacks, ball.holdingHand, ball.id);
       }
     }
 
-    processDwell(ctx, Math.min(t, bt));
+    processDwell(ctx, processTo);
 
-    if (bt > t) break;
+    if (beatStart > t) break;
 
     const sched = shouldThrowAtBeat(pattern, startHand, b, ctx);
-    if (!sched || sched.value === 0) continue;
+    if (sched && sched.value > 0) {
+      const releaseT = showerThrowReleaseTimeS(
+        pattern,
+        startHand,
+        sched.hand,
+        b,
+        bp,
+        dwell,
+        periodBeats,
+      );
+      if (releaseT <= t) {
+        const ballId = popForThrow(ctx, sched.hand, b, periodBeats);
+        if (ballId !== null) {
+          releaseBall(ctx, ballId, sched.value, b, releaseT, cfg, motion);
+        }
+      }
+    }
 
-    const ballId = popTop(ctx.stacks, sched.hand);
-    if (ballId === null) continue;
-    releaseBall(ctx, ballId, sched.value, bt, cfg, motion);
+    if (beatEnd > t) break;
   }
 
   processLandings(ctx, t, bp, cfg, motion, handSchedules);
   processCatching(ctx, t, bp);
   for (const ball of ctx.balls) {
-    if (ball.phase === "catching" && handNearOutside(ball.catchingHand, t, cfg, motion, handSchedules)) {
-      finishCatch(ball, t, bp, ctx.dwell);
+    if (
+      ball.phase === "catching" &&
+      handNearCatchSlot(ball.catchingHand, t, cfg, motion, handSchedules, ball.catchGeometricInside)
+    ) {
+      finishCatch(ball, t, bp, dwellAfterCatch(ctx, ball.catchingHand));
       pushBall(ctx.stacks, ball.holdingHand, ball.id);
     }
   }

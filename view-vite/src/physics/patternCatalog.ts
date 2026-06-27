@@ -8,7 +8,7 @@ export interface PatternDefinition {
   siteswap: string;
   ballCount: number;
   family: PatternFamily;
-  /** Shower patterns: reverse landing parity for this throw height (51→5, 71→7). */
+  /** Shower: high throw (5 or 7) uses reversed functional ends. */
   reverseHighThrow?: number;
 }
 

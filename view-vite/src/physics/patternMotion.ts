@@ -1,72 +1,73 @@
 import type { HandId, HandMotionConfig, PhysicsConfig } from "./config";
-import { landingHand, oppositeHand } from "./config";
+import { landingHand } from "./config";
 import type { PatternDefinition } from "./patternCatalog";
 import {
   ballLiftM,
+  geometricBallSlot,
   handXyInside,
   handXyOutside,
-  insideBallSlot,
-  outsideBallSlot,
 } from "./hands";
+import {
+  catchProbeGeometricInside,
+  landGeometric,
+  releaseGeometric,
+  type ThrowMotionSpec,
+} from "./throwMotion";
+
+export type { ThrowMotionSpec, GeometricSide } from "./throwMotion";
+export {
+  NORMAL_THROW_MOTION,
+  throwMotionSpec,
+  usesInvertedArc,
+  usesReverseHandPath,
+  usesReversedHandMotion,
+  usesReversedThrow,
+  usesSwapHandMotion,
+} from "./throwMotion";
 
 export interface PatternMotionFlags {
-  invertInsideOutside: boolean;
   reverseHighThrow?: number;
 }
 
 export function motionFlagsForPattern(pattern: PatternDefinition): PatternMotionFlags {
-  return {
-    invertInsideOutside: pattern.family === "reverseCascade",
-    reverseHighThrow: pattern.reverseHighThrow,
-  };
+  return { reverseHighThrow: pattern.reverseHighThrow };
 }
 
 export function landingHandForPattern(
   fromHand: HandId,
   throwValue: number,
-  flags: PatternMotionFlags,
+  _flags: PatternMotionFlags,
 ): HandId {
-  let target = landingHand(fromHand, throwValue);
-  if (flags.reverseHighThrow != null && throwValue === flags.reverseHighThrow) {
-    target = target === fromHand ? oppositeHand(fromHand) : fromHand;
-  }
-  return target;
+  return landingHand(fromHand, throwValue);
 }
 
 export function throwSlot(
   hand: HandId,
   cfg: PhysicsConfig,
   motion: HandMotionConfig,
-  flags: PatternMotionFlags,
+  spec: ThrowMotionSpec,
 ): [number, number] {
-  if (flags.invertInsideOutside) {
-    return outsideBallSlot(hand, cfg, motion);
-  }
-  return insideBallSlot(hand, cfg, motion);
+  return geometricBallSlot(hand, releaseGeometric(spec), cfg, motion);
 }
 
 export function catchSlot(
   hand: HandId,
   cfg: PhysicsConfig,
   motion: HandMotionConfig,
-  flags: PatternMotionFlags,
+  spec: ThrowMotionSpec,
 ): [number, number] {
-  if (flags.invertInsideOutside) {
-    return insideBallSlot(hand, cfg, motion);
-  }
-  return outsideBallSlot(hand, cfg, motion);
+  return geometricBallSlot(hand, landGeometric(spec), cfg, motion);
 }
 
 export function catchPose(
   hand: HandId,
   cfg: PhysicsConfig,
   motion: HandMotionConfig,
-  flags: PatternMotionFlags,
+  spec: ThrowMotionSpec,
 ): [number, number] {
-  if (flags.invertInsideOutside) {
-    const [x, y] = handXyInside(hand, cfg, motion);
-    return [x, y + ballLiftM(cfg)];
-  }
-  const [x, y] = handXyOutside(hand, cfg, motion);
+  const side = landGeometric(spec);
+  const [x, y] = side === "inside" ? handXyInside(hand, cfg, motion) : handXyOutside(hand, cfg, motion);
   return [x, y + ballLiftM(cfg)];
 }
+
+export { catchProbeGeometricInside };

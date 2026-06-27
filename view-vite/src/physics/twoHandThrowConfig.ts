@@ -45,6 +45,14 @@ export function clampDwell(d: number, throwValue: number): number {
   return Math.min(max, Math.max(min, d));
 }
 
+/** Shower: throw 1 dwell is half the high-throw dwell (UI slider controls high throw). */
+export function showerDwellBeats(highDwell: number, throwValue: number): number {
+  if (throwValue === 1) {
+    return Math.min(1, Math.max(0, highDwell * 0.5));
+  }
+  return Math.min(throwValue, highDwell);
+}
+
 /** Beat period T_b (seconds per siteswap beat). */
 export const BEAT_PERIOD = {
   min: 0.15,
@@ -80,7 +88,7 @@ export const HAND_SPEED = {
   toInside: { linear: 0.44, power: 2.3 },
 } as const;
 
-/** θ at throw (inside) and catch (outside) poses on the reference ellipse. */
+/** Geometric θ: inside = 0, outside = π (normal functional throw/catch on reference ellipse). */
 export const HAND_POSE_THETA = {
   inside: 0,
   outside: Math.PI,
@@ -93,6 +101,8 @@ export const HAND_POSE_THETA = {
 export const HAND_SCHEDULE = {
   minPeriodBeatsMultiplier: 2,
   minThrowForPeriod: 2,
+  /** Low-hand shower: throw this fraction of a beat after a same-beat catch. */
+  showerCatchThenThrowFrac: 0.42,
 } as const;
 
 /** Ball simulator timing. */

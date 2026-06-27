@@ -8,6 +8,8 @@ export interface ProjectileThrow {
   g: number;
   startTimeS: number;
   label: string;
+  /** Geometric landing point; immediate catch when hand probe differs from functional default. */
+  landsGeometricInside?: boolean;
 }
 
 export function kineticEnergy(massKg: number, vx: number, vy: number): number {
