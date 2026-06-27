@@ -11,6 +11,7 @@ import {
 import { airTimeBeats, airTimeS } from "./airTime";
 import { heldBallPosition } from "./ballSimulator";
 import type { PatternDefinition } from "./patternCatalog";
+import { patternValues } from "./patternCatalog";
 import {
   initialStacks,
   scheduledHandAtBeat,
@@ -26,7 +27,7 @@ import { catchSlot, landingHandForPattern, motionFlagsForPattern, throwSlot, typ
 import { oppositeHand } from "./config";
 import { catchProbeGeometricInside, throwMotionSpec } from "./throwMotion";
 import { positionAt, type ProjectileThrow } from "./projectile";
-import { BALL_SIM, HAND_SCHEDULE, showerDwellBeats } from "./twoHandThrowConfig";
+import { BALL_SIM, dwellBeatsForThrow, HAND_SCHEDULE } from "./twoHandThrowConfig";
 
 export type PatternBallPhase = "inHand" | "airborne" | "catching" | "dwell";
 
@@ -249,20 +250,28 @@ function freshContext(
   return { balls, stacks, flags: motionFlagsForPattern(pattern), pattern, startHand, dwell };
 }
 
-function dwellForThrow(ctx: SimContext, throwValue: number): number {
-  if (ctx.pattern.family === "shower") {
-    return showerDwellBeats(ctx.dwell, throwValue);
+function throwHeightForCatalogHand(
+  ctx: SimContext,
+  hand: HandId,
+): number {
+  const values = patternValues(ctx.pattern);
+  const start = siteswapStartBeat(ctx.pattern, ctx.startHand);
+  for (let i = 0; i < values.length; i++) {
+    const beat = start + i;
+    if (scheduledHandAtBeat(ctx.startHand, beat) === hand) {
+      return values[i];
+    }
   }
-  return Math.min(ctx.dwell, throwValue);
+  return Math.max(...values);
 }
 
-/** Dwell after catch: shower hands use their own throw height, not the incoming ball. */
+function dwellForThrow(ctx: SimContext, throwValue: number): number {
+  return dwellBeatsForThrow(ctx.dwell, throwValue);
+}
+
+/** Dwell after catch uses this hand's throw height in the pattern. */
 function dwellAfterCatch(ctx: SimContext, hand: HandId): number {
-  if (ctx.pattern.family === "shower" && ctx.pattern.reverseHighThrow != null) {
-    const throwVal = hand === ctx.startHand ? ctx.pattern.reverseHighThrow : 1;
-    return showerDwellBeats(ctx.dwell, throwVal);
-  }
-  return ctx.dwell;
+  return dwellBeatsForThrow(ctx.dwell, throwHeightForCatalogHand(ctx, hand));
 }
 
 function releaseBall(
@@ -279,7 +288,7 @@ function releaseBall(
   if (throwValue <= 0) return;
 
   const d = dwellForThrow(ctx, throwValue);
-  const airBeats = airTimeBeats(throwValue, d);
+  const airBeats = airTimeBeats(throwValue, ctx.dwell);
   if (airBeats <= 0) {
     ball.phase = "dwell";
     ball.dwellEndS = bt + d * cfg.beatPeriodS;
@@ -288,7 +297,7 @@ function releaseBall(
   }
   ball.flight = makePatternFlight(
     throwValue,
-    d,
+    ctx.dwell,
     ball.holdingHand,
     bt,
     beat,

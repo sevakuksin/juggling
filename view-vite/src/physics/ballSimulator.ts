@@ -39,7 +39,7 @@ export interface SimulatorParams {
   handSchedules?: HandMotionSchedules | null;
 }
 
-import { BALL_SIM } from "./twoHandThrowConfig";
+import { BALL_SIM, dwellBeatsForThrow } from "./twoHandThrowConfig";
 
 export function heldBallPosition(
   hand: HandId,
@@ -82,9 +82,8 @@ export function previewThrowFromHand(
   motion: HandMotionConfig,
 ): ProjectileThrow | null {
   if (throwValue <= 0) return null;
-  const d = Math.min(Math.max(0, dwellBeats), throwValue);
-  if (airTimeBeats(throwValue, d) <= 0) return null;
-  return makeFlight(throwValue, d, fromHand, 0, cfg, motion);
+  if (airTimeBeats(throwValue, dwellBeats) <= 0) return null;
+  return makeFlight(throwValue, dwellBeats, fromHand, 0, cfg, motion);
 }
 
 interface SimState {
@@ -172,7 +171,7 @@ function beginCatch(
 function finishCatch(s: SimState, landT: number, beatPeriod: number): void {
   s.catchStartS = -1;
   s.catchDeadlineS = -1;
-  const d = Math.min(s.pendingDwell, s.pendingThrow);
+  const d = dwellBeatsForThrow(s.pendingDwell, s.pendingThrow);
   if (d > 0) {
     s.phase = "dwell";
     s.dwellEndS = landT + d * beatPeriod;
@@ -190,7 +189,7 @@ function onRelease(
   schedules?: HandMotionSchedules | null,
 ): void {
   const n = s.label;
-  const d = Math.min(s.pendingDwell, n);
+  const effectiveDwell = dwellBeatsForThrow(s.pendingDwell, n);
   if (n === 0) {
     const [dx, dy] = heldBallPosition(s.holdingHand, bt, cfg, motion, schedules);
     s.phase = "dropping";
@@ -201,14 +200,14 @@ function onRelease(
     return;
   }
   if (n >= 1 && n <= 13) {
-    const airBeats = airTimeBeats(n, d);
+    const airBeats = airTimeBeats(n, s.pendingDwell);
     if (airBeats <= 0) {
       s.phase = "dwell";
-      s.dwellEndS = bt + d * cfg.beatPeriodS;
+      s.dwellEndS = bt + effectiveDwell * cfg.beatPeriodS;
       s.lastReleaseBeat = b;
       return;
     }
-    s.flight = makeFlight(n, d, s.holdingHand, bt, cfg, motion);
+    s.flight = makeFlight(n, s.pendingDwell, s.holdingHand, bt, cfg, motion);
     s.phase = "airborne";
     s.lastReleaseBeat = b;
   }

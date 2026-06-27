@@ -3,7 +3,7 @@ import { landingHand, oppositeHand } from "./config";
 import { airTimeBeats } from "./airTime";
 import { NORMAL_THROW_MOTION, throwMotionSpec, type ThrowMotionSpec } from "./throwMotion";
 import type { PatternDefinition } from "./patternCatalog";
-import { HAND_POSE_THETA, HAND_SCHEDULE, HAND_SPEED, showerDwellBeats } from "./twoHandThrowConfig";
+import { HAND_POSE_THETA, HAND_SCHEDULE, HAND_SPEED } from "./twoHandThrowConfig";
 
 const TAU = 2 * Math.PI;
 
@@ -49,6 +49,8 @@ export interface HandMotionSchedules {
   motionSpec: ThrowMotionSpec;
   /** Per-hand motion when throw heights differ (shower). */
   handMotionSpec?: Partial<Record<HandId, ThrowMotionSpec>>;
+  /** Per-beat motion override (custom mixed patterns). */
+  motionSpecAtBeat?: (hand: HandId, beat: number) => ThrowMotionSpec;
 }
 
 const SPEED = HAND_SPEED;
@@ -207,12 +209,12 @@ function collectEvents(
 function showerLowMultiplexCatchBeats(
   startHand: HandId,
   highThrow: number,
-  highDwell: number,
+  dwellBeats: number,
   periodBeats: number,
 ): Set<number> {
   const beats = new Set<number>();
   const lowHand = oppositeHand(startHand);
-  const air = airTimeBeats(highThrow, highDwell);
+  const air = airTimeBeats(highThrow, dwellBeats);
   if (air <= 0) return beats;
   for (let b = 0; b < periodBeats; b++) {
     if (!throwBeatForHand(startHand, b)) continue;
@@ -227,8 +229,7 @@ function collectShowerHighHandEvents(
   hand: HandId,
   startHand: HandId,
   highThrow: number,
-  highDwell: number,
-  lowDwell: number,
+  dwellBeats: number,
   cfg: PhysicsConfig,
   periodBeats: number,
 ): HandEvent[] {
@@ -246,8 +247,7 @@ function collectShowerHighHandEvents(
     for (const throwing of ["left", "right"] as HandId[]) {
       if (!throwBeatForHand(throwing, b)) continue;
       const throwVal = throwing === startHand ? highThrow : lowThrow;
-      const dwell = throwVal === lowThrow ? lowDwell : highDwell;
-      const air = airTimeBeats(throwVal, dwell);
+      const air = airTimeBeats(throwVal, dwellBeats);
       if (air <= 0) continue;
       if (landingHand(throwing, throwVal) !== hand) continue;
       events.push({ t: b * Tb + air * Tb, kind: "catch" });
@@ -262,15 +262,14 @@ function collectShowerLowHandEvents(
   hand: HandId,
   startHand: HandId,
   highThrow: number,
-  highDwell: number,
-  lowDwell: number,
+  dwellBeats: number,
   cfg: PhysicsConfig,
   periodBeats: number,
 ): HandEvent[] {
   const Tb = cfg.beatPeriodS;
   const lowThrow = 1;
   const split = HAND_SCHEDULE.showerCatchThenThrowFrac * Tb;
-  const multiplex = showerLowMultiplexCatchBeats(startHand, highThrow, highDwell, periodBeats);
+  const multiplex = showerLowMultiplexCatchBeats(startHand, highThrow, dwellBeats, periodBeats);
   const events: HandEvent[] = [];
 
   for (let b = 0; b < periodBeats; b++) {
@@ -287,8 +286,7 @@ function collectShowerLowHandEvents(
     for (const throwing of ["left", "right"] as HandId[]) {
       if (!throwBeatForHand(throwing, b)) continue;
       const throwVal = throwing === startHand ? highThrow : lowThrow;
-      const dwell = throwVal === lowThrow ? lowDwell : highDwell;
-      const air = airTimeBeats(throwVal, dwell);
+      const air = airTimeBeats(throwVal, dwellBeats);
       if (air <= 0) continue;
       if (landingHand(throwing, throwVal) !== hand) continue;
       const catchBeat = b + air;
@@ -305,8 +303,7 @@ function collectShowerHandEvents(
   hand: HandId,
   startHand: HandId,
   highThrow: number,
-  highDwell: number,
-  lowDwell: number,
+  dwellBeats: number,
   cfg: PhysicsConfig,
   periodBeats: number,
 ): HandEvent[] {
@@ -315,8 +312,7 @@ function collectShowerHandEvents(
       hand,
       startHand,
       highThrow,
-      highDwell,
-      lowDwell,
+      dwellBeats,
       cfg,
       periodBeats,
     );
@@ -325,8 +321,7 @@ function collectShowerHandEvents(
     hand,
     startHand,
     highThrow,
-    highDwell,
-    lowDwell,
+    dwellBeats,
     cfg,
     periodBeats,
   );
@@ -431,7 +426,6 @@ export function buildShowerHandSchedules(
   const periodS = periodBeats * cfg.beatPeriodS;
   const tb = cfg.beatPeriodS;
   const otherHand = oppositeHand(startHand);
-  const lowDwell = showerDwellBeats(dwellBeats, 1);
 
   const highSpec = throwMotionSpec(pattern, highThrow);
   const lowSpec = throwMotionSpec(pattern, 1);
@@ -443,7 +437,6 @@ export function buildShowerHandSchedules(
       startHand,
       highThrow,
       dwellBeats,
-      lowDwell,
       cfg,
       periodBeats,
     );

@@ -25,6 +25,29 @@ function motionSpecForHand(hand: HandId, schedules: HandMotionSchedules): ThrowM
   return schedules.handMotionSpec?.[hand] ?? schedules.motionSpec;
 }
 
+function throwBeatAtOrBefore(hand: HandId, beat: number): number | null {
+  if (beat < 0) return null;
+  if (throwBeatForHand(hand, beat)) return beat;
+  return throwBeatAtOrBefore(hand, beat - 1);
+}
+
+function effectiveMotionSpec(
+  hand: HandId,
+  tAbs: number,
+  cfg: PhysicsConfig,
+  schedules: HandMotionSchedules,
+): ThrowMotionSpec {
+  if (schedules.motionSpecAtBeat) {
+    const beat = Math.floor(tAbs / cfg.beatPeriodS + 1e-9);
+    const specBeat = throwBeatAtOrBefore(hand, beat);
+    if (specBeat != null) {
+      return schedules.motionSpecAtBeat(hand, specBeat);
+    }
+    return NORMAL_THROW_MOTION;
+  }
+  return motionSpecForHand(hand, schedules);
+}
+
 /** θ from this hand's schedule (normal functional mapping). */
 function handThetaNormal(
   hand: HandId,
@@ -56,7 +79,9 @@ export function handPhaseRad(
     return handOmega(cfg) * tAbs;
   }
 
-  const spec = motionSpecForHand(hand, schedules);
+  const spec = schedules
+    ? effectiveMotionSpec(hand, tAbs, cfg, schedules)
+    : NORMAL_THROW_MOTION;
   if (spec.reversedHandMotion) {
     return reverseHandTheta(hand, tAbs, schedules);
   }
@@ -94,7 +119,7 @@ export function handPosition(
     return { x, y };
   }
 
-  const spec = motionSpecForHand(hand, schedules);
+  const spec = effectiveMotionSpec(hand, tAbs, cfg, schedules);
   if (spec.reversedHandMotion) {
     const theta = reverseHandTheta(hand, tAbs, schedules);
     const [x, y] = handXyFromTheta(hand, theta, cfg, motion);

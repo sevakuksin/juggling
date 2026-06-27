@@ -1,5 +1,6 @@
 import type { HandId } from "./config";
 import type { PatternDefinition } from "./patternCatalog";
+import type { ParsedThrow } from "./siteswap";
 
 /**
  * Terminology:
@@ -9,7 +10,8 @@ import type { PatternDefinition } from "./patternCatalog";
  * Normal throw: functional throw = geometric inside, functional catch = geometric outside.
  * Reversed throw: functional throw = geometric outside, functional catch = geometric inside.
  *
- * Default ball endpoints follow `reversed`. Shower 1 and 5/7 override landing/release geometry.
+ * Default ball endpoints: landing follows the *next* throw (inner if next is reversed,
+ * outer otherwise). Reversed throws release from geometric outside.
  */
 export type GeometricSide = "inside" | "outside";
 
@@ -68,6 +70,30 @@ export function throwMotionSpec(
   }
 
   return NORMAL_THROW_MOTION;
+}
+
+/** Per-throw motion for custom parsed siteswap (demo 4). */
+export function throwMotionSpecForParsed(
+  throws: ParsedThrow[],
+  throwIndex: number,
+): ThrowMotionSpec {
+  const period = throws.length;
+  const cur = throws[((throwIndex % period) + period) % period];
+  const next = throws[((throwIndex + 1) % period + period) % period];
+
+  const land: GeometricSide = next.reversed ? "inside" : "outside";
+  const release: GeometricSide = cur.reversed ? "outside" : "inside";
+
+  if (!cur.reversed && land === "outside") {
+    return NORMAL_THROW_MOTION;
+  }
+
+  return {
+    reversed: cur.reversed,
+    reversedHandMotion: cur.reversed,
+    releaseGeometric: release,
+    landGeometric: land,
+  };
 }
 
 export function usesReversedThrow(

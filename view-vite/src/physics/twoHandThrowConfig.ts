@@ -45,12 +45,17 @@ export function clampDwell(d: number, throwValue: number): number {
   return Math.min(max, Math.max(min, d));
 }
 
-/** Shower: throw 1 dwell is half the high-throw dwell (UI slider controls high throw). */
-export function showerDwellBeats(highDwell: number, throwValue: number): number {
+/** Throw 1 uses half the slider dwell; other throws use min(n, dwell). */
+export function dwellBeatsForThrow(dwell: number, throwValue: number): number {
   if (throwValue === 1) {
-    return Math.min(1, Math.max(0, highDwell * 0.5));
+    return Math.min(1, Math.max(0, dwell * 0.5));
   }
-  return Math.min(throwValue, highDwell);
+  return Math.min(throwValue, dwell);
+}
+
+/** @deprecated alias — same as dwellBeatsForThrow */
+export function showerDwellBeats(highDwell: number, throwValue: number): number {
+  return dwellBeatsForThrow(highDwell, throwValue);
 }
 
 /** Beat period T_b (seconds per siteswap beat). */
