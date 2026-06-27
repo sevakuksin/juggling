@@ -56,15 +56,15 @@ export function PatternScene() {
     }
   }, [patternInput]);
 
-  const canSim = report != null && report.valid && !parseError;
+  const canSim = report != null && !parseError;
 
   const runtime = useMemo(() => {
-    if (!canSim || !report) return null;
+    if (!report || parseError) return null;
     return customPatternRuntime(
       { raw: report.pattern, throws: report.throws, heights: report.values, period: report.period },
       startHand,
     );
-  }, [canSim, report, startHand]);
+  }, [report, parseError, startHand]);
 
   const maxThrow = report ? Math.max(...report.values) : 3;
   const dwell = clampDwell(dwellBeats, maxThrow);
@@ -97,10 +97,10 @@ export function PatternScene() {
   );
 
   const simResult = useMemo(() => {
-    if (!simParams || !canSim) return { balls: [], error: null };
+    if (!simParams) return { balls: [], error: null };
     void simEpoch;
     return computeCustomPatternAt(displayT, simParams);
-  }, [simParams, canSim, displayT, simEpoch]);
+  }, [simParams, displayT, simEpoch]);
 
   const bounds = useMemo(() => {
     const yMax = stageYMaxM(heightZoom);
@@ -115,7 +115,7 @@ export function PatternScene() {
     clock.setSimTime(0);
   }, [clock]);
 
-  const runtimeError = canSim ? simResult.error : null;
+  const runtimeError = simResult.error;
 
   return (
     <DemoLayout
@@ -202,7 +202,7 @@ export function PatternScene() {
                 />
                 <StatRow label="Period" value={report.period} />
                 {!report.valid && report.invalidReason && (
-                  <p className="error-msg">{report.invalidReason}</p>
+                  <p className="hint invalid-reason">{report.invalidReason}</p>
                 )}
               </>
             )}

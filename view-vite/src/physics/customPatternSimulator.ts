@@ -69,6 +69,8 @@ interface BallState {
   dropX: number;
   dropY: number;
   dropStartS: number;
+  dropReason: string | null;
+  hitGround: boolean;
 }
 
 interface SimContext {
@@ -78,6 +80,7 @@ interface SimContext {
   dwell: number;
   error: string | null;
   nextBallId: number;
+  handSchedules?: HandMotionSchedules | null;
 }
 
 function pushBall(stacks: HandStacks, hand: HandId, ballId: number): void {
@@ -114,28 +117,54 @@ function popForThrow(ctx: SimContext, hand: HandId, beat: number): number | null
   return stack.pop() ?? null;
 }
 
-function setError(ctx: SimContext, message: string, t: number, cfg: PhysicsConfig, motion: HandMotionConfig): void {
-  if (ctx.error) return;
-  ctx.error = message;
-  for (const ball of ctx.balls) {
-    if (ball.phase === "airborne" || ball.phase === "dropping") continue;
+function removeFromStack(stacks: HandStacks, hand: HandId, ballId: number): void {
+  const stack = hand === "left" ? stacks.left : stacks.right;
+  const idx = stack.indexOf(ballId);
+  if (idx >= 0) stack.splice(idx, 1);
+}
+
+function dropBall(
+  ctx: SimContext,
+  ball: BallState,
+  reason: string,
+  t: number,
+  cfg: PhysicsConfig,
+  motion: HandMotionConfig,
+): void {
+  if (ball.phase === "dropping") return;
+  removeFromStack(ctx.stacks, ball.holdingHand, ball.id);
+  removeFromStack(ctx.stacks, ball.catchingHand, ball.id);
+  if (ball.phase === "airborne" && ball.flight) {
+    const [x, y] = positionAt(ball.flight, Math.max(t, ball.flight.startTimeS));
+    ball.dropX = x;
+    ball.dropY = y;
+  } else {
     const hand = ball.phase === "catching" ? ball.catchingHand : ball.holdingHand;
-    const [dx, dy] = heldBallPosition(hand, t, cfg, motion);
-    ball.phase = "dropping";
-    ball.dropX = dx;
-    ball.dropY = dy;
-    ball.dropStartS = t;
-    ball.flight = null;
+    const [x, y] = heldBallPosition(hand, t, cfg, motion, ctx.handSchedules);
+    ball.dropX = x;
+    ball.dropY = y;
   }
+  ball.phase = "dropping";
+  ball.dropStartS = t;
+  ball.dropReason = reason;
+  ball.flight = null;
+  ball.catchStartS = -1;
+  ball.catchDeadlineS = -1;
+}
+
+function dropHeldOnHand(
+  ctx: SimContext,
+  hand: HandId,
+  reason: string,
+  t: number,
+  cfg: PhysicsConfig,
+  motion: HandMotionConfig,
+): void {
   for (const ball of ctx.balls) {
-    if (ball.phase === "airborne" && ball.flight) {
-      const [x, y] = positionAt(ball.flight, t);
-      ball.phase = "dropping";
-      ball.dropX = x;
-      ball.dropY = y;
-      ball.dropStartS = t;
-      ball.flight = null;
-    }
+    if (ball.phase === "dropping" || ball.phase === "airborne") continue;
+    const onHand =
+      ball.holdingHand === hand || (ball.phase === "catching" && ball.catchingHand === hand);
+    if (onHand) dropBall(ctx, ball, reason, t, cfg, motion);
   }
 }
 
@@ -190,6 +219,8 @@ function createBall(ctx: SimContext, hand: HandId): number {
     dropX: 0,
     dropY: 0,
     dropStartS: -1,
+    dropReason: null,
+    hitGround: false,
   });
   pushBall(ctx.stacks, hand, id);
   return id;
@@ -262,12 +293,26 @@ function tryCatch(
       ? scheduledThrowAtBeat(ctx.runtime, landBeat)
       : null;
   if (catchHandScheduled && catchHandScheduled.height === 0) {
-    setError(ctx, `Catch on beat ${landBeat} where hand is scheduled 0`, landT, cfg, motion);
+    dropBall(
+      ctx,
+      ball,
+      `Catch on beat ${landBeat} where hand is scheduled 0`,
+      landT,
+      cfg,
+      motion,
+    );
     return;
   }
 
   if (ballsOnHand(ctx, catchHand) > 0) {
-    setError(ctx, `Hand already holding a ball on catch (beat ${landBeat})`, landT, cfg, motion);
+    dropBall(
+      ctx,
+      ball,
+      `Hand already holding a ball on catch (beat ${landBeat})`,
+      landT,
+      cfg,
+      motion,
+    );
     return;
   }
 
@@ -290,7 +335,6 @@ function processLandings(
   cfg: PhysicsConfig,
   motion: HandMotionConfig,
 ): void {
-  if (ctx.error) return;
   for (const ball of ctx.balls) {
     if (ball.phase !== "airborne" || !ball.flight) continue;
     const landT = ball.flight.startTimeS + ball.flight.tofS;
@@ -301,11 +345,10 @@ function processLandings(
 }
 
 function processCatching(ctx: SimContext, t: number, cfg: PhysicsConfig, motion: HandMotionConfig): void {
-  if (ctx.error) return;
   for (const ball of ctx.balls) {
     if (ball.phase !== "catching") continue;
     if (ball.catchDeadlineS >= 0 && t >= ball.catchDeadlineS) {
-      setError(ctx, "Missed catch", t, cfg, motion);
+      dropBall(ctx, ball, "Missed catch", t, cfg, motion);
     }
   }
 }
@@ -326,14 +369,14 @@ function processDropping(ctx: SimContext, t: number, cfg: PhysicsConfig): void {
     const y = ball.dropY - 0.5 * cfg.g * elapsed * elapsed;
     if (y <= floorY) {
       ball.dropY = floorY;
+      if (!ball.hitGround) {
+        ball.hitGround = true;
+        if (!ctx.error) {
+          ctx.error = ball.dropReason ?? "Ball hit the ground";
+        }
+      }
     }
   }
-}
-
-function removeFromStack(stacks: HandStacks, hand: HandId, ballId: number): void {
-  const stack = hand === "left" ? stacks.left : stacks.right;
-  const idx = stack.indexOf(ballId);
-  if (idx >= 0) stack.splice(idx, 1);
 }
 
 function releaseBall(
@@ -382,7 +425,7 @@ function checkZeroBeatHold(
       (b.holdingHand === hand || b.catchingHand === hand),
   );
   if (stackLen > 0 || holding) {
-    setError(ctx, `Hand holds a ball on 0-throw beat ${beat}`, t, cfg, motion);
+    dropHeldOnHand(ctx, hand, `Hand holds a ball on 0-throw beat ${beat}`, t, cfg, motion);
   }
 }
 
@@ -398,7 +441,6 @@ function attemptThrowAtBeat(
   motion: HandMotionConfig,
   thrownThisBeat: Set<string>,
 ): void {
-  if (ctx.error) return;
   const key = `${hand}:${b}`;
   if (thrownThisBeat.has(key)) return;
 
@@ -423,7 +465,11 @@ function attemptThrowAtBeat(
   releaseBall(ctx, ballId, st.height, b, throwIndex, releaseT, cfg, motion);
 }
 
-function freshContext(runtime: CustomPatternRuntime, dwell: number): SimContext {
+function freshContext(
+  runtime: CustomPatternRuntime,
+  dwell: number,
+  handSchedules?: HandMotionSchedules | null,
+): SimContext {
   return {
     runtime,
     balls: [],
@@ -431,6 +477,7 @@ function freshContext(runtime: CustomPatternRuntime, dwell: number): SimContext 
     dwell,
     error: null,
     nextBallId: 0,
+    handSchedules,
   };
 }
 
@@ -462,7 +509,7 @@ export function computeCustomPatternAt(
 ): CustomPatternSimResult {
   const { physics: cfg, motion, runtime, dwellBeats, handSchedules } = params;
   const dwell = Math.min(Math.max(0, dwellBeats), 13);
-  const ctx = freshContext(runtime, dwell);
+  const ctx = freshContext(runtime, dwell, handSchedules);
 
   if (t <= 0) {
     return { balls: [], error: null };
@@ -474,8 +521,6 @@ export function computeCustomPatternAt(
   const thrownThisBeat = new Set<string>();
 
   for (let b = 0; b <= maxBeat; b++) {
-    if (ctx.error) break;
-
     const beatStart = b * bp;
     const beatEnd = (b + 1) * bp;
     const processTo = Math.min(t, beatEnd);
@@ -495,7 +540,7 @@ export function computeCustomPatternAt(
           if (processTo >= beatEnd - 1e-9) {
             checkZeroBeatHold(ctx, hand, b, processTo, cfg, motion);
           }
-        } else if (!ctx.error) {
+        } else {
           attemptThrowAtBeat(
             ctx,
             b,
@@ -515,33 +560,31 @@ export function computeCustomPatternAt(
     if (beatEnd > t) break;
   }
 
-  if (!ctx.error) {
-    processLandings(ctx, t, bp, cfg, motion);
-    processCatching(ctx, t, cfg, motion);
-    processDwell(ctx, t);
+  processLandings(ctx, t, bp, cfg, motion);
+  processCatching(ctx, t, cfg, motion);
+  processDwell(ctx, t);
 
-    for (let b = startBeat; b <= maxBeat; b++) {
-      if (ctx.error) break;
-      const hand = scheduledHandAtBeat(runtime.startHand, b);
-      if (!hand || !throwBeatForHand(hand, b)) continue;
-      const st = scheduledThrowAtBeat(runtime, b);
-      if (!st || st.height === 0) continue;
-      const releaseT = releaseTimeS(ctx, hand, b, bp);
-      if (releaseT > t + 1e-9) continue;
-      attemptThrowAtBeat(
-        ctx,
-        b,
-        hand,
-        st,
-        throwIndexAtBeat(runtime, b),
-        t,
-        bp,
-        cfg,
-        motion,
-        thrownThisBeat,
-      );
-    }
+  for (let b = startBeat; b <= maxBeat; b++) {
+    const hand = scheduledHandAtBeat(runtime.startHand, b);
+    if (!hand || !throwBeatForHand(hand, b)) continue;
+    const st = scheduledThrowAtBeat(runtime, b);
+    if (!st || st.height === 0) continue;
+    const releaseT = releaseTimeS(ctx, hand, b, bp);
+    if (releaseT > t + 1e-9) continue;
+    attemptThrowAtBeat(
+      ctx,
+      b,
+      hand,
+      st,
+      throwIndexAtBeat(runtime, b),
+      t,
+      bp,
+      cfg,
+      motion,
+      thrownThisBeat,
+    );
   }
+
   processDropping(ctx, t, cfg);
 
   const balls = ctx.balls.map((ball) => {
