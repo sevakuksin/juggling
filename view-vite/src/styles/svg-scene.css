@@ -26,7 +26,7 @@
 .meter-scale-palm-label {
   fill: #6b7a8f;
   font-family: system-ui, sans-serif;
-  font-weight: 500;
+  font-weight: 600;
   text-anchor: start;
   dominant-baseline: central;
 }
@@ -155,7 +155,13 @@
 .meter-scale-x-label {
   fill: #6b7a8f;
   font-family: system-ui, sans-serif;
-  font-weight: 500;
+  font-weight: 600;
+}
+
+.meter-scale-x-unit {
+  fill: #6b7a8f;
+  font-family: system-ui, sans-serif;
+  font-weight: 600;
 }
 
 .hand-sep-projection {
@@ -167,8 +173,20 @@
 
 .hand-sep-dimension {
   stroke: #4a5568;
-  stroke-width: 0.04;
+  stroke-width: 0.012;
   stroke-linecap: round;
+  fill: none;
+}
+
+.hand-sep-tick {
+  stroke: #9aa8b8;
+  stroke-width: 0.01;
+  stroke-linecap: round;
+}
+
+.hand-sep-arrowhead {
+  fill: #4a5568;
+  stroke: none;
 }
 
 .hand-sep-foot {
@@ -179,7 +197,7 @@
 .hand-sep-label {
   fill: #2d3748;
   font-family: system-ui, sans-serif;
-  font-weight: 600;
+  font-weight: 700;
   pointer-events: none;
 }
 

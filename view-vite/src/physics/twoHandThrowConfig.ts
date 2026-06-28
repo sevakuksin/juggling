@@ -27,23 +27,23 @@ export function stageYMaxM(heightZoom: number): number {
 
 /** Dwell D: beats the ball stays in hand after each catch, before the next throw. */
 export const DWELL = {
-  min: 0.8,
-  max: 1,
+  min: 0.5,
+  max: 0.99,
   default: 0.8,
   /** Slider step (beats). */
   step: 0.01,
 } as const;
 
-/** For throw n=1, air time is tiny — use a lower dwell band so (n−D) stays reasonable. */
+/** For throw n=1 — fixed 1%–60% on the dial (not tied to ≥3). */
 export const DWELL_THROW_1 = {
-  min: 0.1,
-  max: 0.4,
-  default: 0.25,
+  min: 0.01,
+  max: 0.6,
+  default: 0.4,
 } as const;
 
-/** Throw n=2 dwell band (100% = max = full in-hand time before release). */
+/** Throw n=2 dwell band (80%–200% of one beat on the dial; 200% = 2 beats). */
 export const DWELL_THROW_2 = {
-  min: 0,
+  min: 0.8,
   max: 2,
   default: 2,
 } as const;

@@ -127,7 +127,11 @@ export function PatternScene() {
               simTime={displayT}
               onBeatPeriodChange={setBeatPeriod}
               dwellProfile={dwellProfile}
-              onDwellProfileChange={setDwellProfile}
+              onDwellProfileChange={(update) =>
+                setDwellProfile((prev) =>
+                  typeof update === "function" ? update(prev) : update,
+                )
+              }
               startHand={startHand}
               onStartHandChange={setStartHand}
             />
@@ -155,8 +159,11 @@ export function PatternScene() {
               <PatternPlayPanel
                 playing={clock.playing && canSim && !runtimeError}
                 speed={clock.speed}
+                simTime={displayT}
+                beatPeriodS={beatPeriod}
                 onTogglePlay={clock.togglePlay}
                 onSpeedChange={clock.setSpeed}
+                onSimTimeChange={clock.setSimTime}
                 showRestart={!!runtimeError}
                 onRestart={restart}
               />

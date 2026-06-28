@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useId, useRef } from "react";
 import type { HandId, HandMotionConfig, PhysicsConfig } from "@/physics/config";
 import { leftX, rightX } from "@/physics/config";
 import { handPosition, type HandMotionSchedules } from "@/physics/hands";
@@ -28,6 +28,7 @@ export function HandSeparationLayer({
   handSepM,
   onHandSepChange,
 }: HandSeparationLayerProps) {
+  const uid = useId().replace(/:/g, "");
   const dragRef = useRef<{ hand: HandId; startSep: number; startX: number; pxPerM: number } | null>(
     null,
   );
@@ -69,8 +70,10 @@ export function HandSeparationLayer({
 
   const hitR = lenM(0.75);
   const groundY = 0;
-  const dimY = lenM(0.55);
-  const labelSize = lenM(0.48);
+  const dimY = -lenM(2.55);
+  const labelSize = lenM(0.54);
+  const labelBelowArrow = lenM(0.38);
+  const arrowId = `hand-sep-arrow-${uid}`;
 
   return (
     <g
@@ -79,16 +82,42 @@ export function HandSeparationLayer({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
+      <defs>
+        <marker
+          id={arrowId}
+          markerWidth={6}
+          markerHeight={6}
+          refX={3}
+          refY={3}
+          orient="auto-start-reverse"
+          markerUnits="strokeWidth"
+        >
+          <path d="M 0.5 0.5 L 5.5 3 L 0.5 5.5 Z" className="hand-sep-arrowhead" />
+        </marker>
+      </defs>
+
       <line className="hand-sep-projection" x1={lx} y1={groundY} x2={lx} y2={leftPose.y} />
       <line className="hand-sep-projection" x1={rx} y1={groundY} x2={rx} y2={rightPose.y} />
-      <line className="hand-sep-dimension" x1={lx} y1={dimY} x2={rx} y2={dimY} />
-      <circle className="hand-sep-foot left" cx={lx} cy={dimY} r={lenM(0.06)} />
-      <circle className="hand-sep-foot right" cx={rx} cy={dimY} r={lenM(0.06)} />
-      <g transform={`translate(${(lx + rx) / 2}, ${dimY}) scale(1, -1)`}>
+
+      <line className="hand-sep-tick" x1={lx} y1={groundY} x2={lx} y2={dimY} />
+      <line className="hand-sep-tick" x1={rx} y1={groundY} x2={rx} y2={dimY} />
+
+      <line
+        className="hand-sep-dimension"
+        x1={lx}
+        y1={dimY}
+        x2={rx}
+        y2={dimY}
+        markerStart={`url(#${arrowId})`}
+        markerEnd={`url(#${arrowId})`}
+      />
+
+      <g transform={`translate(${(lx + rx) / 2}, ${dimY - labelBelowArrow}) scale(1, -1)`}>
         <text className="hand-sep-label" y={0} fontSize={labelSize} textAnchor="middle" dominantBaseline="middle">
           {handSepM.toFixed(2)} m
         </text>
       </g>
+
       <circle
         className="hand-sep-handle hand-sep-handle--left"
         cx={leftPose.x}

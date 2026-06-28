@@ -40,7 +40,7 @@ export function padBounds(
 /** Extra metres below ground (y=0) kept visible in the viewBox. */
 export function stageBottomPadM(bounds: StageBounds, pad = 0.08): number {
   const h = bounds.yMax - bounds.yMin;
-  return Math.max(h * pad * 2.75, lenM(1.55));
+  return Math.max(h * pad * 2.75, lenM(3.05));
 }
 
 export function scaleAxisX(paddedBounds: StageBounds): number {

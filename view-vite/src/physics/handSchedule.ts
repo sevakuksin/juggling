@@ -657,8 +657,18 @@ export function buildThrowTypeSegments(events: HandEvent[], periodS: number): Ha
     const lo = Math.min(thS, thE);
     const hi = Math.max(thS, thE);
 
+    // A hand whose first throw is not at t=0 has a loop window of [t0, t0+period).
+    // Catch times are wrapped into [0, period), so also test the period-shifted copy
+    // so a catch that belongs to the wrap-around interval is not missed.
     const catches = loop
-      .filter((e) => e.kind === "catch" && e.t > tStart + 1e-9 && e.t < tEnd - 1e-9)
+      .filter((e) => e.kind === "catch")
+      .map((e) => {
+        for (const cand of [e.t, e.t + periodS, e.t - periodS]) {
+          if (cand > tStart + 1e-9 && cand < tEnd - 1e-9) return { ...e, t: cand };
+        }
+        return null;
+      })
+      .filter((e): e is HandEvent => e !== null)
       .sort((a, b) => a.t - b.t);
 
     const kfs: { t: number; th: number; slow: boolean }[] = [
@@ -772,7 +782,6 @@ export function buildShowerHandSchedules(
     HAND_SCHEDULE.minPeriodBeatsMultiplier *
     Math.max(HAND_SCHEDULE.minThrowForPeriod, highThrow);
   const periodS = periodBeats * cfg.beatPeriodS;
-  const tb = cfg.beatPeriodS;
   const otherHand = oppositeHand(startHand);
 
   const highSpec = throwMotionSpec(pattern, highThrow);
@@ -796,7 +805,9 @@ export function buildShowerHandSchedules(
         periodS,
         isHighHand ? {} : { throwFollowThrow: "windBetweenThrows" },
       ),
-      phaseOffsetS: isHighHand ? (hand === "right" ? 0 : tb) : 0,
+      // Shower events already carry absolute beat times for each hand, so no
+      // phase shift is needed. (A non-zero offset desynced left-start patterns.)
+      phaseOffsetS: 0,
     };
   }
 

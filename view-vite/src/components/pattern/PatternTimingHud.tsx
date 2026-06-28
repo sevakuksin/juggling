@@ -13,7 +13,7 @@ interface PatternTimingHudProps {
   simTime: number;
   onBeatPeriodChange: (tb: number) => void;
   dwellProfile: DwellProfile;
-  onDwellProfileChange: (profile: DwellProfile) => void;
+  onDwellProfileChange: (profile: DwellProfile | ((prev: DwellProfile) => DwellProfile)) => void;
   startHand: HandId;
   onStartHandChange: (hand: HandId) => void;
 }
@@ -37,24 +37,39 @@ export function PatternTimingHud({
       <div className="pattern-hud-pies">
         <DraggableDwellPie
           label="≥3"
+          color="blue"
+          beatRef={1}
+          circleMaxPct={99}
           value={dwellProfile.general}
           min={DWELL.min}
           max={DWELL.max}
-          onChange={(general) => onDwellProfileChange({ ...dwellProfile, general })}
+          onChange={(general) =>
+            onDwellProfileChange((prev) => ({ ...prev, general }))
+          }
         />
         <DraggableDwellPie
           label="1"
+          color="green"
+          beatRef={1}
+          arcSpanFrac={0.6}
           value={dwellProfile.throw1}
           min={DWELL_THROW_1.min}
           max={DWELL_THROW_1.max}
-          onChange={(throw1) => onDwellProfileChange({ ...dwellProfile, throw1 })}
+          onChange={(throw1) =>
+            onDwellProfileChange((prev) => ({ ...prev, throw1 }))
+          }
         />
         <DraggableDwellPie
           label="2"
+          color="coral"
+          beatRef={1}
+          circleMaxPct={200}
           value={dwellProfile.throw2}
           min={DWELL_THROW_2.min}
           max={DWELL_THROW_2.max}
-          onChange={(throw2) => onDwellProfileChange({ ...dwellProfile, throw2 })}
+          onChange={(throw2) =>
+            onDwellProfileChange((prev) => ({ ...prev, throw2 }))
+          }
         />
       </div>
       <div className="pattern-hud-hand">

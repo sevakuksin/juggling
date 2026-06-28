@@ -15,8 +15,8 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.8rem;
-  width: min(100% - 1.5rem, 36rem);
+  gap: 1rem;
+  width: min(100% - 1.5rem, 42rem);
   pointer-events: none;
 }
 
@@ -27,13 +27,13 @@
 .pattern-overlay-input-label {
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
-  font-size: 1rem;
+  gap: 0.65rem;
+  font-size: 1.1rem;
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 0.85rem 0.95rem;
+  padding: 1.05rem 1.15rem;
   border-radius: 14px;
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(8px);
@@ -56,10 +56,10 @@
 
 .pattern-overlay-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.75rem 0.95rem;
+  gap: 0.85rem;
+  padding: 0.95rem 1.05rem;
   border-radius: 14px;
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(8px);
@@ -69,8 +69,12 @@
 
 .pattern-overlay-actions .pattern-play-panel {
   flex: 1;
+  min-width: 0;
   padding: 0;
   border: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .pattern-stage-wrap {
@@ -97,8 +101,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 0.9rem 1rem;
-  padding: 0.95rem 1rem;
+  gap: 1.1rem 1.25rem;
+  padding: 1.15rem 1.25rem;
   border-radius: 14px;
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(8px);
@@ -110,6 +114,7 @@
   display: flex;
   gap: 0.55rem;
   align-items: flex-end;
+  isolation: isolate;
 }
 
 .pattern-hud-hand {
@@ -127,46 +132,36 @@
 }
 
 .toggle--sm {
-  padding: 0.5rem 1rem;
-  font-size: 1.05rem;
-  min-width: 3rem;
+  padding: 0.6rem 1.15rem;
+  font-size: 1.15rem;
+  min-width: 3.25rem;
 }
 
 /* Metronome */
 .metronome-control {
   display: flex;
-  align-items: center;
-  gap: 0.85rem;
+  align-items: flex-start;
+  gap: 1rem;
+  flex: 1 1 100%;
+}
+
+.metronome-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.85rem 1.1rem;
+  flex: 1;
 }
 
 .metronome-visual {
   position: relative;
-  width: 58px;
-  height: 80px;
+  width: 68px;
+  height: 96px;
   flex-shrink: 0;
-}
-
-.metronome-rod {
-  position: absolute;
-  left: 50%;
-  bottom: 10px;
-  width: 3px;
-  height: 62px;
-  margin-left: -1.5px;
-  background: var(--muted);
-  transform-origin: bottom center;
-}
-
-.metronome-bar {
-  position: absolute;
-  left: 50%;
-  bottom: 10px;
-  width: 5px;
-  margin-left: -2.5px;
-  background: var(--text);
-  border-radius: 2px;
-  transform-origin: bottom center;
-  transition: height 0.05s linear;
+  border-radius: 10px;
+  background: linear-gradient(165deg, #fff8f2 0%, #fdebd8 100%);
+  border: 1px solid color-mix(in srgb, #d47845 35%, var(--border));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .metronome-base {
@@ -174,15 +169,70 @@
   bottom: 0;
   left: 8px;
   right: 8px;
-  height: 10px;
-  border-radius: 3px;
-  background: var(--border);
+  height: 14px;
+  border-radius: 5px 5px 4px 4px;
+  background: linear-gradient(180deg, #f0a06a 0%, #d47845 55%, #b85f32 100%);
+  border: 1px solid #9a4e28;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  z-index: 2;
+}
+
+.metronome-pivot {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  width: 0;
+  height: 0;
+  transform-origin: bottom center;
+  will-change: transform;
+}
+
+.metronome-rod {
+  position: absolute;
+  left: -2.5px;
+  bottom: 0;
+  width: 5px;
+  height: 68px;
+  background: linear-gradient(to top, #c94b3a 0%, #e8564a 45%, #f4a261 100%);
+  border-radius: 2px;
+  transform-origin: bottom center;
+  box-shadow: 1px 0 2px rgba(0, 0, 0, 0.12);
+}
+
+.metronome-weight {
+  position: absolute;
+  left: -10px;
+  bottom: 14px;
+  width: 20px;
+  height: 15px;
+  background: linear-gradient(180deg, #5a9cf5 0%, #2f80ed 55%, #1a5bb5 100%);
+  border-radius: 4px;
+  border: 1px solid #164a8f;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 .metronome-field {
   display: flex;
   flex-direction: column;
   gap: 0.28rem;
+}
+
+.metronome-field--equal {
+  flex: 1 1 10.5rem;
+  min-width: 10.5rem;
+  max-width: 13rem;
+}
+
+.metronome-input {
+  width: 100%;
+  padding: 0.45rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 1.35rem;
+  font-weight: 600;
+  background: var(--bg);
+  color: var(--text);
+  text-align: center;
 }
 
 .metronome-input-row {
@@ -192,35 +242,153 @@
   gap: 0.4rem;
 }
 
+.metronome-input-row .stepper-input--metronome {
+  flex: 1;
+  min-width: 0;
+}
+
 .metronome-field-label {
-  font-size: 0.9rem;
+  font-size: 1rem;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
-.metronome-input {
-  width: 5.4rem;
-  padding: 0.38rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 1.2rem;
-  font-weight: 600;
-  background: var(--bg);
-  color: var(--text);
-}
-
-.metronome-input--bpm {
-  width: 5.2rem;
-  font-size: 1.65rem;
-  font-weight: 700;
-}
-
 .metronome-unit {
-  font-size: 1.05rem;
+  font-size: 1.2rem;
   font-weight: 600;
   color: var(--muted);
   flex-shrink: 0;
+}
+
+/* Stepper (+/−) inputs */
+.stepper-input {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.stepper-btn {
+  width: 3.1rem;
+  min-width: 3.1rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  color: var(--text);
+  font-size: 1.85rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  user-select: none;
+  touch-action: none;
+}
+
+.stepper-btn:hover {
+  border-color: var(--accent-teal);
+  background: #fff;
+}
+
+.stepper-input-field {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 600;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.stepper-input .metronome-input {
+  width: auto;
+  flex: 1;
+  min-width: 3.5rem;
+  padding: 0.45rem 0.35rem;
+}
+
+.stepper-input--metronome {
+  width: 100%;
+}
+
+.stepper-input--metronome .stepper-input-field {
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.stepper-input--metronome .stepper-btn {
+  width: 2.85rem;
+  min-width: 2.85rem;
+  font-size: 1.65rem;
+}
+
+.stepper-input-field::-webkit-outer-spin-button,
+.stepper-input-field::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Timeline scrubber under play */
+.pattern-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.pattern-timeline-track {
+  position: relative;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 55%, transparent);
+  overflow: hidden;
+}
+
+.pattern-timeline-beat {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: color-mix(in srgb, var(--accent-teal) 45%, var(--border));
+  pointer-events: none;
+}
+
+.pattern-timeline-playhead {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--accent-teal);
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.65);
+}
+
+.pattern-timeline-slider {
+  width: 100%;
+  height: 1.35rem;
+  margin: -0.65rem 0 0;
+  accent-color: var(--accent-teal);
+  cursor: pointer;
+  background: transparent;
+}
+
+.pattern-timeline-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.pattern-timeline-now {
+  font-weight: 700;
+  color: var(--text);
 }
 
 /* Dwell pies */
@@ -229,33 +397,75 @@
   flex-direction: column;
   align-items: center;
   gap: 0.28rem;
+  position: relative;
+}
+
+.dwell-pie--dragging {
+  z-index: 4;
 }
 
 .dwell-pie-svg {
-  cursor: pointer;
+  cursor: grab;
   touch-action: none;
+  display: block;
 }
 
 .dwell-pie-ring {
-  stroke: color-mix(in srgb, var(--text) 55%, var(--border));
+  stroke: #1a1a1a;
   stroke-width: 2.5;
 }
 
+.dwell-pie-border {
+  stroke: #1a1a1a;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
 .dwell-pie-bg {
-  fill: color-mix(in srgb, var(--border) 28%, transparent);
-  stroke: color-mix(in srgb, var(--text) 40%, var(--border));
+  fill: color-mix(in srgb, var(--border) 22%, #fff);
+  stroke: #1a1a1a;
   stroke-width: 1.5;
+}
+
+.dwell-pie-center {
+  fill: #fff;
+  stroke: color-mix(in srgb, var(--border) 70%, transparent);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.dwell-pie--blue .dwell-pie-fill {
+  fill: color-mix(in srgb, var(--accent) 62%, #fff);
+}
+
+.dwell-pie--blue .dwell-pie-handle {
+  fill: var(--accent);
+}
+
+.dwell-pie--green .dwell-pie-fill {
+  fill: color-mix(in srgb, var(--accent-green) 58%, #fff);
+}
+
+.dwell-pie--green .dwell-pie-handle {
+  fill: var(--accent-green);
+}
+
+.dwell-pie--coral .dwell-pie-fill {
+  fill: color-mix(in srgb, var(--accent-coral) 58%, #fff);
+}
+
+.dwell-pie--coral .dwell-pie-handle {
+  fill: var(--accent-coral);
 }
 
 .dwell-pie-fill {
-  fill: color-mix(in srgb, var(--accent-teal) 55%, transparent);
-  stroke: var(--accent-teal);
   stroke-width: 1.5;
   stroke-linejoin: round;
+  stroke: #1a1a1a;
 }
 
 .dwell-pie-handle {
-  fill: var(--accent-teal);
   stroke: #fff;
   stroke-width: 2;
   cursor: grab;
@@ -264,8 +474,11 @@
 .dwell-pie-pct {
   fill: var(--text);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 800;
   pointer-events: none;
+  paint-order: stroke fill;
+  stroke: #fff;
+  stroke-width: 3px;
 }
 
 .dwell-pie-meta {
@@ -310,14 +523,14 @@
 }
 
 .stage-zoom-btn {
-  width: 2.85rem;
-  height: 2.85rem;
+  width: 3.25rem;
+  height: 3.25rem;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   color: var(--text);
-  font-size: 1.55rem;
+  font-size: 1.75rem;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -331,11 +544,11 @@
 
 .pattern-input--bar {
   width: 100%;
-  font-size: 1.55rem;
+  font-size: 1.75rem;
   font-weight: 600;
   font-family: ui-monospace, "Cascadia Code", monospace;
   line-height: 1.3;
-  padding: 0.75rem 0.95rem;
+  padding: 0.85rem 1.05rem;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--bg);
@@ -354,26 +567,26 @@
 }
 
 .btn-play--large {
-  width: 4.25rem;
-  height: 4.25rem;
-  font-size: 1.65rem;
+  width: 4.85rem;
+  height: 4.85rem;
+  font-size: 1.85rem;
   border-radius: 50%;
 }
 
 .pattern-overlay-actions .speed-label {
-  font-size: 1.05rem;
-  gap: 0.5rem;
+  font-size: 1.15rem;
+  gap: 0.55rem;
 }
 
 .pattern-overlay-actions .speed-label select {
-  font-size: 1.1rem;
-  padding: 0.45rem 0.6rem;
+  font-size: 1.2rem;
+  padding: 0.55rem 0.7rem;
   border-radius: 10px;
 }
 
 .pattern-overlay-actions .btn-secondary {
-  font-size: 1.05rem;
-  padding: 0.55rem 1rem;
+  font-size: 1.15rem;
+  padding: 0.65rem 1.15rem;
   border-radius: 10px;
 }
 
