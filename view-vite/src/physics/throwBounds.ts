@@ -17,8 +17,9 @@ export function twoHandBounds(
   rxM: number,
   yMax: number,
   handHeightM: number,
+  widthZoom = 1,
 ): StageBounds {
-  const pad = rxM + STAGE_X_PAD_M;
+  const pad = (rxM + STAGE_X_PAD_M) / widthZoom;
   return {
     xMin: -handSepM / 2 - pad,
     xMax: handSepM / 2 + pad,

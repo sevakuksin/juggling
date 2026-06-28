@@ -643,6 +643,10 @@ a.app-brand:hover .app-title {
   height: 100%;
 }
 
+.pattern-stage-wrap .hand-sprite {
+  pointer-events: none;
+}
+
 .pattern-runtime-error {
   position: absolute;
   left: 50%;

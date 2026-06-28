@@ -14,6 +14,12 @@ export const HEIGHT_ZOOM = {
   default: 1,
 } as const;
 
+export const WIDTH_ZOOM = {
+  min: 0.6,
+  max: 2.5,
+  default: 1,
+} as const;
+
 /** Stage top in metres: STAGE_HEIGHT_M × heightZoom (only the slider changes this). */
 export function stageYMaxM(heightZoom: number): number {
   return STAGE_HEIGHT_M * heightZoom;
@@ -34,6 +40,43 @@ export const DWELL_THROW_1 = {
   max: 0.4,
   default: 0.25,
 } as const;
+
+/** Throw n=2 dwell band (100% = max = full in-hand time before release). */
+export const DWELL_THROW_2 = {
+  min: 0,
+  max: 2,
+  default: 2,
+} as const;
+
+/** Independent dwell values per throw height (demo 4). */
+export interface DwellProfile {
+  /** Throws n ≥ 3. */
+  general: number;
+  /** Throw height 1. */
+  throw1: number;
+  /** Throw height 2. */
+  throw2: number;
+}
+
+export function defaultDwellProfile(): DwellProfile {
+  return {
+    general: DWELL.default,
+    throw1: DWELL_THROW_1.default,
+    throw2: DWELL_THROW_2.default,
+  };
+}
+
+export function dwellForThrowHeight(profile: DwellProfile, throwValue: number): number {
+  if (throwValue <= 0) return 0;
+  if (throwValue === 1) return clampDwell(profile.throw1, 1);
+  if (throwValue === 2) return Math.min(2, Math.max(DWELL_THROW_2.min, profile.throw2));
+  return Math.min(throwValue, clampDwell(profile.general, throwValue));
+}
+
+/** Max dwell across profile — conservative hand-schedule timing. */
+export function dwellProfileMax(profile: DwellProfile): number {
+  return Math.max(profile.general, profile.throw1, profile.throw2);
+}
 
 export function dwellRangeForThrow(throwValue: number): { min: number; max: number; default: number } {
   if (throwValue === 1) return DWELL_THROW_1;
@@ -108,6 +151,11 @@ export const HAND_SCHEDULE = {
   minThrowForPeriod: 2,
   /** Low-hand shower: throw this fraction of a beat after a same-beat catch. */
   showerCatchThenThrowFrac: 0.42,
+  /** Same-side return: overshoot past current θ by this much (radians). */
+  sameSideOvershootRad: (60 * Math.PI) / 180,
+  /** Fraction of segment: ease out to overshoot / hold / ease back. */
+  sameSideOutFrac: 0.38,
+  sameSideHoldFrac: 0.14,
 } as const;
 
 /** Ball simulator timing. */

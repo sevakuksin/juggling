@@ -141,3 +141,51 @@
   background: var(--surface);
   box-shadow: var(--shadow);
 }
+
+.meter-scale-x-axis {
+  stroke: #9aa8b8;
+  stroke-width: 0.016;
+}
+
+.meter-scale-x-tick {
+  stroke: #b8c0cc;
+  stroke-width: 0.012;
+}
+
+.meter-scale-x-label {
+  fill: #6b7a8f;
+  font-family: system-ui, sans-serif;
+  font-weight: 500;
+}
+
+.hand-sep-projection {
+  stroke: color-mix(in srgb, var(--accent-teal) 75%, #3d8b8b);
+  stroke-width: 0.045;
+  stroke-dasharray: 0.08 0.06;
+  stroke-linecap: round;
+}
+
+.hand-sep-dimension {
+  stroke: #4a5568;
+  stroke-width: 0.04;
+  stroke-linecap: round;
+}
+
+.hand-sep-foot {
+  fill: #4a5568;
+  stroke: none;
+}
+
+.hand-sep-label {
+  fill: #2d3748;
+  font-family: system-ui, sans-serif;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.hand-sep-handle {
+  fill: transparent;
+  stroke: transparent;
+  cursor: ew-resize;
+  pointer-events: all;
+}

@@ -79,9 +79,11 @@ export function handPhaseRad(
     return handOmega(cfg) * tAbs;
   }
 
-  const spec = schedules
-    ? effectiveMotionSpec(hand, tAbs, cfg, schedules)
-    : NORMAL_THROW_MOTION;
+  if (schedules.useVisualTheta) {
+    return handThetaAt(tAbs, schedules[hand]);
+  }
+
+  const spec = effectiveMotionSpec(hand, tAbs, cfg, schedules);
   if (spec.reversedHandMotion) {
     return reverseHandTheta(hand, tAbs, schedules);
   }
@@ -115,6 +117,12 @@ export function handPosition(
 ): HandPose {
   if (!schedules) {
     const theta = handOmega(cfg) * tAbs;
+    const [x, y] = handXyFromTheta(hand, theta, cfg, motion);
+    return { x, y };
+  }
+
+  if (schedules.useVisualTheta) {
+    const theta = handThetaAt(tAbs, schedules[hand]);
     const [x, y] = handXyFromTheta(hand, theta, cfg, motion);
     return { x, y };
   }

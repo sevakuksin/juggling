@@ -4,7 +4,7 @@ import {
   ballLiftM,
   throwBeatForHand,
 } from "./hands";
-import { airTimeBeats, airTimeS } from "./airTime";
+import { airTimeBeatsExact, airTimeSExact } from "./airTime";
 import { heldBallPosition } from "./ballSimulator";
 import {
   asShowerPatternDefinition,
@@ -12,6 +12,7 @@ import {
   customDwellAfterCatch,
   customDwellForThrow,
   customShowerHighHand,
+  motionSpecForCustomThrow,
   scheduledHandAtBeat,
   scheduledThrowAtBeat,
   siteswapStartBeat,
@@ -24,9 +25,9 @@ import {
   showerThrowReleaseTimeS,
   type HandStacks,
 } from "./patternInit";
-import { catchProbeGeometricInside, throwMotionSpecForParsed } from "./throwMotion";
+import { catchProbeGeometricInside } from "./throwMotion";
 import { positionAt, type ProjectileThrow } from "./projectile";
-import { BALL_SIM, HAND_SCHEDULE } from "./twoHandThrowConfig";
+import { BALL_SIM, HAND_SCHEDULE, type DwellProfile } from "./twoHandThrowConfig";
 
 export type CustomBallPhase = "inHand" | "airborne" | "catching" | "dwell" | "dropping";
 
@@ -49,7 +50,7 @@ export interface CustomPatternSimulatorParams {
   physics: PhysicsConfig;
   motion: HandMotionConfig;
   runtime: CustomPatternRuntime;
-  dwellBeats: number;
+  dwellProfile: DwellProfile;
   handSchedules?: HandMotionSchedules | null;
 }
 
@@ -77,7 +78,7 @@ interface SimContext {
   runtime: CustomPatternRuntime;
   balls: BallState[];
   stacks: HandStacks;
-  dwell: number;
+  dwellProfile: DwellProfile;
   error: string | null;
   nextBallId: number;
   handSchedules?: HandMotionSchedules | null;
@@ -111,7 +112,7 @@ function popForThrow(ctx: SimContext, hand: HandId, beat: number): number | null
     const periodBeats = showerPeriodBeats(ctx.runtime);
     const multiplex =
       hand === oppositeHand(hiHand) &&
-      showerLowMultiplexCatchBeats(showerDef, hiHand, ctx.dwell, periodBeats).has(beat);
+      showerLowMultiplexCatchBeats(showerDef, hiHand, ctx.dwellProfile.general, periodBeats).has(beat);
     if (multiplex) return stack.shift() ?? null;
   }
   return stack.pop() ?? null;
@@ -183,12 +184,14 @@ function makeFlight(
   fromHand: HandId,
   releaseTimeS: number,
   throwIndex: number,
+  throwBeat: number,
   cfg: PhysicsConfig,
   motion: HandMotionConfig,
 ): ProjectileThrow {
-  const spec = throwMotionSpecForParsed(ctx.runtime.parsed.throws, throwIndex);
+  const spec = motionSpecForCustomThrow(ctx.runtime, throwIndex, throwBeat);
   const toHand = landingHand(fromHand, throwValue);
-  const tofS = airTimeS(throwValue, ctx.dwell, cfg.beatPeriodS);
+  const d = customDwellForThrow(ctx.runtime, ctx.dwellProfile, throwValue);
+  const tofS = airTimeSExact(throwValue, d, cfg.beatPeriodS);
   return {
     startXy: throwSlot(fromHand, cfg, motion, spec),
     endXy: catchSlot(toHand, cfg, motion, spec),
@@ -324,7 +327,7 @@ function tryCatch(
   ball.catchDeadlineS = landT + BALL_SIM.catchTimeoutBeats * bp;
   ball.phase = "catching";
 
-  finishCatch(ball, landT, bp, customDwellAfterCatch(ctx.runtime, ctx.dwell, ball.catchingHand));
+  finishCatch(ball, landT, bp, customDwellAfterCatch(ctx.runtime, ctx.dwellProfile, ball.catchingHand));
   pushBall(ctx.stacks, ball.holdingHand, ball.id);
 }
 
@@ -394,8 +397,8 @@ function releaseBall(
   ball.throwBeat = beat;
   ball.throwIndex = throwIndex;
 
-  const d = customDwellForThrow(ctx.runtime, ctx.dwell, throwValue);
-  const airBeats = airTimeBeats(throwValue, ctx.dwell);
+  const d = customDwellForThrow(ctx.runtime, ctx.dwellProfile, throwValue);
+  const airBeats = airTimeBeatsExact(throwValue, d);
   if (airBeats <= 0) {
     ball.phase = "dwell";
     ball.dwellEndS = bt + d * cfg.beatPeriodS;
@@ -405,7 +408,7 @@ function releaseBall(
     return;
   }
   removeFromStack(ctx.stacks, ball.holdingHand, ballId);
-  ball.flight = makeFlight(ctx, throwValue, ball.holdingHand, bt, throwIndex, cfg, motion);
+  ball.flight = makeFlight(ctx, throwValue, ball.holdingHand, bt, throwIndex, beat, cfg, motion);
   ball.phase = "airborne";
 }
 
@@ -467,14 +470,14 @@ function attemptThrowAtBeat(
 
 function freshContext(
   runtime: CustomPatternRuntime,
-  dwell: number,
+  dwellProfile: DwellProfile,
   handSchedules?: HandMotionSchedules | null,
 ): SimContext {
   return {
     runtime,
     balls: [],
     stacks: { left: [], right: [] },
-    dwell,
+    dwellProfile,
     error: null,
     nextBallId: 0,
     handSchedules,
@@ -496,7 +499,7 @@ function releaseTimeS(
       hand,
       beat,
       bp,
-      ctx.dwell,
+      ctx.dwellProfile.general,
       showerPeriodBeats(ctx.runtime),
     );
   }
@@ -507,9 +510,8 @@ export function computeCustomPatternAt(
   t: number,
   params: CustomPatternSimulatorParams,
 ): CustomPatternSimResult {
-  const { physics: cfg, motion, runtime, dwellBeats, handSchedules } = params;
-  const dwell = Math.min(Math.max(0, dwellBeats), 13);
-  const ctx = freshContext(runtime, dwell, handSchedules);
+  const { physics: cfg, motion, runtime, dwellProfile, handSchedules } = params;
+  const ctx = freshContext(runtime, dwellProfile, handSchedules);
 
   if (t <= 0) {
     return { balls: [], error: null };

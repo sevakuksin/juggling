@@ -1,7 +1,12 @@
 import type { HandId, PhysicsConfig } from "./config";
 import { landingHand, oppositeHand } from "./config";
 import { airTimeBeats } from "./airTime";
-import { NORMAL_THROW_MOTION, throwMotionSpec, type ThrowMotionSpec } from "./throwMotion";
+import {
+  NORMAL_THROW_MOTION,
+  throwMotionSpec,
+  type GeometricSide,
+  type ThrowMotionSpec,
+} from "./throwMotion";
 import type { PatternDefinition } from "./patternCatalog";
 import { HAND_POSE_THETA, HAND_SCHEDULE, HAND_SPEED } from "./twoHandThrowConfig";
 
@@ -20,11 +25,30 @@ export function handOutsideTheta(_hand: HandId): number {
 /** Functional throw or catch at a schedule event. */
 export type HandEventKind = "throw" | "catch";
 
-export type SegmentProfile = "toCatch" | "toThrow" | "lapInside" | "lapOutside" | "windBetweenThrows";
+export type SegmentProfile =
+  | "toCatch"
+  | "toThrow"
+  | "lapInside"
+  | "lapOutside"
+  | "windBetweenThrows"
+  | "sameSideReturn"
+  | "sameSidePassThrough"
+  | "continueForward"
+  | "typeReversal"
+  | "kf";
+
+/** Easing for keyframe ("kf") segments: speed state at each endpoint. */
+export type EaseKind = "linear" | "accel" | "decel" | "smooth";
 
 export interface HandEvent {
   t: number;
   kind: HandEventKind;
+  /** Functional inside/outside at this event (defaults: throw=inside, catch=outside). */
+  functionalSide?: GeometricSide;
+  /** Hand path remap active at this event (custom mixed patterns). */
+  reversedHandMotion?: boolean;
+  /** Parsed throw is reversed (`-` notation). */
+  throwReversed?: boolean;
 }
 
 export interface HandMotionSegment {
@@ -33,6 +57,20 @@ export interface HandMotionSegment {
   theta0: number;
   theta1: number;
   profile: SegmentProfile;
+  /** Functional side the hand should reach at segment end. */
+  targetSide?: GeometricSide;
+  /** Same-side wiggle passes through the point (non-zero θ̇) when the next event needs the other side. */
+  passThrough?: boolean;
+  /** Wiggle waypoint time for sameSidePassThrough (seconds). */
+  tWaypoint?: number;
+  /** Functional side after the waypoint (sameSidePassThrough). */
+  afterSide?: GeometricSide;
+  /** Catch waypoint time for typeReversal (seconds). */
+  tCatch?: number;
+  /** Catch side for typeReversal. */
+  catchSide?: GeometricSide;
+  /** Easing for "kf" segments. */
+  ease?: EaseKind;
 }
 
 export interface HandMotionSchedule {
@@ -51,6 +89,8 @@ export interface HandMotionSchedules {
   handMotionSpec?: Partial<Record<HandId, ThrowMotionSpec>>;
   /** Per-beat motion override (custom mixed patterns). */
   motionSpecAtBeat?: (hand: HandId, beat: number) => ThrowMotionSpec;
+  /** Schedule stores geometric visual θ (custom patterns); skip path remap on read. */
+  useVisualTheta?: boolean;
 }
 
 const SPEED = HAND_SPEED;
@@ -73,6 +113,19 @@ function easeToInside(u: number): number {
   return blend(u, u ** p, lw);
 }
 
+function easeKf(kind: EaseKind, u: number): number {
+  switch (kind) {
+    case "accel":
+      return u * u;
+    case "decel":
+      return 1 - (1 - u) ** 2;
+    case "smooth":
+      return u * u * (3 - 2 * u);
+    default:
+      return u;
+  }
+}
+
 function throwBeatForHand(hand: HandId, beatIndex: number): boolean {
   return hand === "right" ? beatIndex % 2 === 0 : beatIndex % 2 === 1;
 }
@@ -83,16 +136,63 @@ function unwrapForward(from: number, canonical: number): number {
   return end;
 }
 
+/** Unwrap target backward (decreasing θ) from `from`. */
+function unwrapBackward(from: number, canonical: number): number {
+  let end = canonical;
+  while (end > from + 1e-9) end -= TAU;
+  while (end + TAU <= from + 1e-9) end += TAU;
+  return end;
+}
+
+function functionalSideAt(event: HandEvent, kind: HandEventKind): GeometricSide {
+  if (event.functionalSide) return event.functionalSide;
+  return kind === "throw" ? "inside" : "outside";
+}
+
+function thetaForSide(side: GeometricSide): number {
+  return side === "inside" ? handInsideTheta("right") : handOutsideTheta("right");
+}
+
+function visualThetaAtSide(side: GeometricSide): number {
+  return side === "inside" ? handInsideTheta("right") : handOutsideTheta("right");
+}
+
+/** Reach `side` from `from` along the lower ellipse arc (through θ = 3π/2). */
+function lowerArcTheta(from: number, side: GeometricSide): number {
+  const target = visualThetaAtSide(side);
+  return side === "inside" ? unwrapForward(from, target) : unwrapBackward(from, target);
+}
+
+function transitProfile(toSide: GeometricSide): SegmentProfile {
+  return toSide === "outside" ? "toCatch" : "toThrow";
+}
+
 function segmentProfile(
+  _cur: HandEvent,
   from: HandEventKind,
   to: HandEventKind,
+  fromSide: GeometricSide,
+  toSide: GeometricSide,
   throwFollowThrow: SegmentProfile = "lapInside",
+  explicitSides: boolean,
 ): SegmentProfile {
-  if (from === "throw" && to === "catch") return "toCatch";
-  if (from === "catch" && to === "throw") return "toThrow";
-  if (from === "throw" && to === "throw") return throwFollowThrow;
+  const sameDest = explicitSides && fromSide === toSide;
+  if (from === "throw" && to === "catch") {
+    return sameDest ? "sameSideReturn" : transitProfile(toSide);
+  }
+  if (from === "catch" && to === "throw") {
+    return sameDest ? "sameSideReturn" : transitProfile(toSide);
+  }
+  if (from === "throw" && to === "throw") {
+    if (sameDest) return "sameSideReturn";
+    if (explicitSides) return transitProfile(toSide);
+    return throwFollowThrow;
+  }
+  if (from === "catch" && to === "catch") {
+    return sameDest ? "sameSideReturn" : transitProfile(toSide);
+  }
   if (from === "throw") return "lapInside";
-  return "lapOutside";
+  return transitProfile(toSide);
 }
 
 function lerpAngle(theta0: number, theta1: number, u: number, easing: (t: number) => number): number {
@@ -103,12 +203,8 @@ function interpolateSegment(seg: HandMotionSegment, wt: number): number {
   const span = seg.t1 - seg.t0;
   const localU = span > 0 ? clamp01((wt - seg.t0) / span) : 0;
   switch (seg.profile) {
-    case "toCatch": {
-      if (seg.theta0 >= 1.75 * Math.PI && seg.theta1 <= Math.PI + 0.01) {
-        return lerpAngle(0, Math.PI, localU, easeFromInside);
-      }
+    case "toCatch":
       return lerpAngle(seg.theta0, seg.theta1, localU, easeFromInside);
-    }
     case "toThrow":
       return lerpAngle(seg.theta0, seg.theta1, localU, easeToInside);
     case "lapInside": {
@@ -126,6 +222,66 @@ function interpolateSegment(seg: HandMotionSegment, wt: number): number {
       const inside = unwrapForward(outside, handInsideTheta("right"));
       if (localU < 0.5) return lerpAngle(seg.theta0, outside, localU * 2, easeFromInside);
       return lerpAngle(outside, inside, (localU - 0.5) * 2, easeToInside);
+    }
+    case "sameSideReturn": {
+      const { sameSideOvershootRad, sameSideOutFrac, sameSideHoldFrac } = HAND_SCHEDULE;
+      const backFrac = 1 - sameSideOutFrac - sameSideHoldFrac;
+      const target = unwrapForward(seg.theta0, visualThetaAtSide(seg.targetSide ?? "inside"));
+      const overshoot = seg.theta0 + sameSideOvershootRad;
+      if (localU < sameSideOutFrac) {
+        return lerpAngle(seg.theta0, overshoot, localU / sameSideOutFrac, easeFromInside);
+      }
+      if (localU < sameSideOutFrac + sameSideHoldFrac) return overshoot;
+      const backEase = seg.passThrough ? easeFromInside : easeToInside;
+      return lerpAngle(
+        overshoot,
+        target,
+        (localU - sameSideOutFrac - sameSideHoldFrac) / backFrac,
+        backEase,
+      );
+    }
+    case "sameSidePassThrough": {
+      const tWp = seg.tWaypoint ?? seg.t1;
+      const wpTheta = unwrapForward(seg.theta0, visualThetaAtSide(seg.targetSide ?? "inside"));
+      if (wt <= tWp + 1e-9) {
+        const wiggleSeg: HandMotionSegment = {
+          ...seg,
+          t1: tWp,
+          profile: "sameSideReturn",
+          passThrough: true,
+          theta1: wpTheta,
+        };
+        return interpolateSegment(wiggleSeg, wt);
+      }
+      const u = clamp01((wt - tWp) / (seg.t1 - tWp));
+      return lerpAngle(wpTheta, seg.theta1, u, easeFromInside);
+    }
+    case "continueForward":
+      return lerpAngle(seg.theta0, seg.theta1, localU, easeFromInside);
+    case "kf":
+      return lerpAngle(seg.theta0, seg.theta1, localU, (u) => easeKf(seg.ease ?? "linear", u));
+    case "typeReversal": {
+      const { sameSideOvershootRad } = HAND_SCHEDULE;
+      const tCatch = seg.tCatch ?? seg.t1;
+      const catchSide = seg.catchSide ?? "outside";
+      const catchTheta = unwrapBackward(
+        seg.theta0 + sameSideOvershootRad,
+        visualThetaAtSide(catchSide),
+      );
+      if (wt <= seg.t0 + 1e-9) return seg.theta0;
+      if (wt >= seg.t1 - 1e-9) return seg.theta1;
+      const overshootEnd = seg.t0 + Math.min((tCatch - seg.t0) * 0.25, 0.15);
+      const overshoot = seg.theta0 + sameSideOvershootRad;
+      if (wt <= overshootEnd) {
+        const u = (wt - seg.t0) / Math.max(overshootEnd - seg.t0, 1e-9);
+        return lerpAngle(seg.theta0, overshoot, u, easeFromInside);
+      }
+      if (wt <= tCatch + 1e-9) {
+        const u = (wt - overshootEnd) / Math.max(tCatch - overshootEnd, 1e-9);
+        return lerpAngle(overshoot, catchTheta, u, easeFromInside);
+      }
+      const u = (wt - tCatch) / Math.max(seg.t1 - tCatch, 1e-9);
+      return lerpAngle(catchTheta, seg.theta1, u, easeFromInside);
     }
   }
 }
@@ -327,17 +483,41 @@ function collectShowerHandEvents(
   );
 }
 
-function segmentEndTheta(from: number, profile: SegmentProfile): number {
-  if (profile === "toCatch") return unwrapForward(from, handOutsideTheta("right"));
-  if (profile === "toThrow" || profile === "windBetweenThrows") {
-    return unwrapForward(from, handInsideTheta("right"));
+function segmentEndTheta(
+  from: number,
+  profile: SegmentProfile,
+  targetSide: GeometricSide | undefined,
+  visualPlanning: boolean,
+  afterSide?: GeometricSide,
+): number {
+  if (visualPlanning) {
+    if (profile === "sameSideReturn") {
+      return unwrapForward(from, visualThetaAtSide(targetSide ?? "inside"));
+    }
+    if (profile === "sameSidePassThrough") {
+      const wp = visualThetaAtSide(targetSide ?? "inside");
+      const endSide = afterSide ?? "outside";
+      return lowerArcTheta(unwrapForward(from, wp), endSide);
+    }
+    if (profile === "toCatch") return lowerArcTheta(from, "outside");
+    if (profile === "toThrow" || profile === "windBetweenThrows") {
+      return lowerArcTheta(from, "inside");
+    }
+  } else {
+    if (profile === "sameSideReturn") {
+      return unwrapForward(from, thetaForSide(targetSide ?? "inside"));
+    }
+    if (profile === "toCatch") return lowerArcTheta(from, "outside");
+    if (profile === "toThrow" || profile === "windBetweenThrows") {
+      return lowerArcTheta(from, "inside");
+    }
   }
   if (profile === "lapInside" || profile === "lapOutside") return from + TAU;
   return from;
 }
 
-/** Normal hand schedule: functional throw at geometric inside, catch at geometric outside. */
-function buildSegments(
+/** Build θ segments from functional throw/catch events. */
+export function buildSegments(
   events: HandEvent[],
   periodS: number,
   options: { throwFollowThrow?: SegmentProfile } = {},
@@ -348,26 +528,175 @@ function buildSegments(
     return [{ t0: 0, t1: periodS, theta0: 0, theta1: TAU, profile: "lapInside" }];
   }
 
-  const loopWithWrap = [...loop, { t: periodS, kind: loop[0].kind }];
-  let theta = handInsideTheta("right");
+  const loopWithWrap = [
+    ...loop,
+    ...loop.map((e, j) => ({
+      ...e,
+      t: e.t + periodS,
+      _wrapGen: 1,
+      _wrapIdx: j,
+    })),
+  ];
+
+  const usesVisualPlanning = loop.some((e) => e.functionalSide !== undefined);
+  let theta = usesVisualPlanning
+    ? visualThetaAtSide(functionalSideAt(loop[0], loop[0].kind))
+    : handInsideTheta("right");
   const segments: HandMotionSegment[] = [];
 
   for (let i = 0; i < loop.length; i++) {
     const cur = loop[i];
-    const isLast = i === loop.length - 1;
-    const nxt = isLast
-      ? { t: loop[0].t + periodS, kind: loop[0].kind }
-      : loopWithWrap[i + 1];
+    const nxt = loopWithWrap[i + 1];
+    const after = loopWithWrap[i + 2];
     if (nxt.t - cur.t < 1e-9) continue;
 
-    const profile = segmentProfile(cur.kind, nxt.kind, throwFollowThrow);
-    const theta1 = segmentEndTheta(theta, profile);
-    segments.push({ t0: cur.t, t1: nxt.t, theta0: theta, theta1, profile });
+    const fromSide = functionalSideAt(cur, cur.kind);
+    const toSide = functionalSideAt(nxt, nxt.kind);
+    const afterSide = functionalSideAt(after, after.kind);
+    const explicitSides = cur.functionalSide !== undefined || nxt.functionalSide !== undefined;
+    const sameDest = explicitSides && fromSide === toSide;
+
+    if (
+      usesVisualPlanning &&
+      sameDest &&
+      afterSide !== toSide &&
+      after.t - cur.t > 1e-9
+    ) {
+      const theta1 = segmentEndTheta(
+        theta,
+        "sameSidePassThrough",
+        toSide,
+        true,
+        afterSide,
+      );
+      segments.push({
+        t0: cur.t,
+        t1: after.t,
+        tWaypoint: nxt.t,
+        theta0: theta,
+        theta1,
+        profile: "sameSidePassThrough",
+        targetSide: toSide,
+        afterSide,
+      });
+      theta = theta1;
+      i += 1;
+      continue;
+    }
+
+    const profile = segmentProfile(
+      cur,
+      cur.kind,
+      nxt.kind,
+      fromSide,
+      toSide,
+      throwFollowThrow,
+      explicitSides,
+    );
+    const theta1 = segmentEndTheta(theta, profile, toSide, usesVisualPlanning);
+    segments.push({
+      t0: cur.t,
+      t1: nxt.t,
+      theta0: theta,
+      theta1,
+      profile,
+      targetSide: toSide,
+    });
     theta = theta1;
   }
 
   if (segments.length === 0) {
     segments.push({ t0: 0, t1: periodS, theta0: 0, theta1: TAU, profile: "lapInside" });
+  }
+
+  return segments;
+}
+
+function sideAt(event: HandEvent): GeometricSide {
+  return functionalSideAt(event, event.kind);
+}
+
+/**
+ * Mixed custom patterns: each throw's type sets a rotation direction
+ * (normal = forward / increasing θ through inside; reversed = backward through outside).
+ * Runs of the same type are continuous ellipse laps. At a normal↔reversed boundary the
+ * hand slows, reverses direction, and catches the incoming ball during the turnaround.
+ */
+export function buildThrowTypeSegments(events: HandEvent[], periodS: number): HandMotionSegment[] {
+  const loop = mergeEvents(events.filter((e) => e.t <= periodS + 1e-9));
+  const throws = loop.filter((e) => e.kind === "throw").sort((a, b) => a.t - b.t);
+  if (throws.length === 0) {
+    return [{ t0: 0, t1: periodS, theta0: 0, theta1: TAU, profile: "kf", ease: "linear" }];
+  }
+
+  const n = throws.length;
+  const dirOf = (e: HandEvent) => (e.throwReversed ? -1 : 1);
+  const throwPoint = (e: HandEvent) => (e.throwReversed ? Math.PI : 0);
+  /** Interval i (throw i → throw i+1) reverses direction. */
+  const isReversal = (i: number) => dirOf(throws[i]) !== dirOf(throws[(i + 1) % n]);
+
+  // Continuous absolute θ at each throw boundary (0..n).
+  const thetaAt: number[] = new Array(n + 1);
+  thetaAt[0] = throwPoint(throws[0]);
+  for (let i = 0; i < n; i++) {
+    const d = dirOf(throws[(i + 1) % n]);
+    const delta = isReversal(i) ? d * Math.PI : d * TAU;
+    thetaAt[i + 1] = thetaAt[i] + delta;
+  }
+  // A throw boundary is "slow" (velocity ≈ 0) when the upcoming interval reverses.
+  const slowAt = (i: number) => isReversal(((i % n) + n) % n);
+
+  const segments: HandMotionSegment[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const tStart = throws[i].t;
+    const tEnd = i + 1 < n ? throws[i + 1].t : throws[0].t + periodS;
+    if (tEnd - tStart < 1e-9) continue;
+
+    const thS = thetaAt[i];
+    const thE = thetaAt[i + 1];
+    const lo = Math.min(thS, thE);
+    const hi = Math.max(thS, thE);
+
+    const catches = loop
+      .filter((e) => e.kind === "catch" && e.t > tStart + 1e-9 && e.t < tEnd - 1e-9)
+      .sort((a, b) => a.t - b.t);
+
+    const kfs: { t: number; th: number; slow: boolean }[] = [
+      { t: tStart, th: thS, slow: slowAt(i) },
+    ];
+
+    for (const c of catches) {
+      const cBase = sideAt(c) === "inside" ? 0 : Math.PI;
+      let v = cBase;
+      while (v < lo - 1e-9) v += TAU;
+      while (v > hi + 1e-9) v -= TAU;
+      if (v < lo - 1e-9) v += TAU;
+      const dwell = Math.abs(v - thS) < 1e-6 || Math.abs(v - thE) < 1e-6;
+      kfs.push({ t: c.t, th: v, slow: dwell });
+    }
+
+    kfs.push({ t: tEnd, th: thE, slow: slowAt(i + 1) });
+
+    for (let k = 0; k < kfs.length - 1; k++) {
+      const a = kfs[k];
+      const b = kfs[k + 1];
+      if (b.t - a.t < 1e-9) continue;
+      const ease: EaseKind =
+        a.slow && b.slow ? "smooth" : a.slow ? "accel" : b.slow ? "decel" : "linear";
+      segments.push({ t0: a.t, t1: b.t, theta0: a.th, theta1: b.th, profile: "kf", ease });
+    }
+  }
+
+  if (segments.length === 0) {
+    segments.push({
+      t0: 0,
+      t1: periodS,
+      theta0: thetaAt[0],
+      theta1: thetaAt[0] + TAU,
+      profile: "kf",
+      ease: "linear",
+    });
   }
 
   return segments;

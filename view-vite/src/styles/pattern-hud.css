@@ -1,0 +1,397 @@
+/* Pattern scene — full-width animation + top-right overlay rail */
+
+.pattern-scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.pattern-overlay-rail {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.8rem;
+  width: min(100% - 1.5rem, 36rem);
+  pointer-events: none;
+}
+
+.pattern-overlay-rail > * {
+  pointer-events: auto;
+}
+
+.pattern-overlay-input-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.85rem 0.95rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.07);
+}
+
+.pattern-overlay-msg {
+  margin: 0;
+  padding: 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.pattern-parsed-throws {
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.pattern-overlay-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.95rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.07);
+}
+
+.pattern-overlay-actions .pattern-play-panel {
+  flex: 1;
+  padding: 0;
+  border: none;
+}
+
+.pattern-stage-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, #f0ebe4 88%, var(--surface)) 0%,
+    color-mix(in srgb, #f7f2ec 92%, var(--bg)) 45%,
+    color-mix(in srgb, #f2ece4 90%, var(--surface)) 100%
+  );
+  border-radius: 12px;
+  margin: 0.35rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 1px 3px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.pattern-stage-wrap .hand-sprite {
+  pointer-events: none;
+}
+
+.pattern-hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.9rem 1rem;
+  padding: 0.95rem 1rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.07);
+}
+
+.pattern-hud-pies {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-end;
+}
+
+.pattern-hud-hand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  align-self: center;
+}
+
+.pattern-hud-hand-label {
+  font-size: 1rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.toggle--sm {
+  padding: 0.5rem 1rem;
+  font-size: 1.05rem;
+  min-width: 3rem;
+}
+
+/* Metronome */
+.metronome-control {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.metronome-visual {
+  position: relative;
+  width: 58px;
+  height: 80px;
+  flex-shrink: 0;
+}
+
+.metronome-rod {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  width: 3px;
+  height: 62px;
+  margin-left: -1.5px;
+  background: var(--muted);
+  transform-origin: bottom center;
+}
+
+.metronome-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  width: 5px;
+  margin-left: -2.5px;
+  background: var(--text);
+  border-radius: 2px;
+  transform-origin: bottom center;
+  transition: height 0.05s linear;
+}
+
+.metronome-base {
+  position: absolute;
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--border);
+}
+
+.metronome-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.metronome-input-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.metronome-field-label {
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metronome-input {
+  width: 5.4rem;
+  padding: 0.38rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.metronome-input--bpm {
+  width: 5.2rem;
+  font-size: 1.65rem;
+  font-weight: 700;
+}
+
+.metronome-unit {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+/* Dwell pies */
+.dwell-pie {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.dwell-pie-svg {
+  cursor: pointer;
+  touch-action: none;
+}
+
+.dwell-pie-ring {
+  stroke: color-mix(in srgb, var(--text) 55%, var(--border));
+  stroke-width: 2.5;
+}
+
+.dwell-pie-bg {
+  fill: color-mix(in srgb, var(--border) 28%, transparent);
+  stroke: color-mix(in srgb, var(--text) 40%, var(--border));
+  stroke-width: 1.5;
+}
+
+.dwell-pie-fill {
+  fill: color-mix(in srgb, var(--accent-teal) 55%, transparent);
+  stroke: var(--accent-teal);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.dwell-pie-handle {
+  fill: var(--accent-teal);
+  stroke: #fff;
+  stroke-width: 2;
+  cursor: grab;
+}
+
+.dwell-pie-pct {
+  fill: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.dwell-pie-meta {
+  text-align: center;
+  line-height: 1.15;
+}
+
+.dwell-pie-label {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.dwell-pie-value {
+  display: block;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+/* Unified zoom */
+.stage-zoom-rail {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.stage-zoom-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.stage-zoom-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+}
+
+.stage-zoom-btn {
+  width: 2.85rem;
+  height: 2.85rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  color: var(--text);
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.stage-zoom-btn:hover {
+  border-color: var(--accent-teal);
+  background: #fff;
+}
+
+.pattern-input--bar {
+  width: 100%;
+  font-size: 1.55rem;
+  font-weight: 600;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  line-height: 1.3;
+  padding: 0.75rem 0.95rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.pattern-play-panel {
+  flex-shrink: 0;
+}
+
+.pattern-play-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.btn-play--large {
+  width: 4.25rem;
+  height: 4.25rem;
+  font-size: 1.65rem;
+  border-radius: 50%;
+}
+
+.pattern-overlay-actions .speed-label {
+  font-size: 1.05rem;
+  gap: 0.5rem;
+}
+
+.pattern-overlay-actions .speed-label select {
+  font-size: 1.1rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 10px;
+}
+
+.pattern-overlay-actions .btn-secondary {
+  font-size: 1.05rem;
+  padding: 0.55rem 1rem;
+  border-radius: 10px;
+}
+
+.demo-layout--full {
+  grid-template-columns: 1fr !important;
+}
+
+.demo-layout--full .demo-animation-canvas {
+  padding: 0.15rem;
+}
+
+@media (max-width: 900px) {
+  .pattern-overlay-rail {
+    width: min(100% - 0.75rem, 100%);
+  }
+
+  .pattern-hud-pies {
+    width: 100%;
+    justify-content: center;
+  }
+}

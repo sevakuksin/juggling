@@ -10,8 +10,8 @@ import type { ParsedThrow } from "./siteswap";
  * Normal throw: functional throw = geometric inside, functional catch = geometric outside.
  * Reversed throw: functional throw = geometric outside, functional catch = geometric inside.
  *
- * Default ball endpoints: landing follows the *next* throw (inner if next is reversed,
- * outer otherwise). Reversed throws release from geometric outside.
+ * Each throw: release from this throw (reversed → outside). Landing follows the throw
+ * scheduled at beat + height (reversed there → inside, normal → outside).
  */
 export type GeometricSide = "inside" | "outside";
 
@@ -29,6 +29,8 @@ export interface ThrowMotionSpec {
 export const NORMAL_THROW_MOTION: ThrowMotionSpec = {
   reversed: false,
   reversedHandMotion: false,
+  releaseGeometric: "inside",
+  landGeometric: "outside",
 };
 
 export function releaseGeometric(spec: ThrowMotionSpec): GeometricSide {
@@ -39,6 +41,30 @@ export function landGeometric(spec: ThrowMotionSpec): GeometricSide {
   return spec.landGeometric ?? (spec.reversed ? "inside" : "outside");
 }
 
+/** Release / landing slots from this throw and the throw scheduled at landing beat. */
+export function throwGeometricEndpoints(
+  cur: Pick<ParsedThrow, "reversed">,
+  landRef: Pick<ParsedThrow, "reversed">,
+): { release: GeometricSide; land: GeometricSide } {
+  return {
+    release: cur.reversed ? "outside" : "inside",
+    land: landRef.reversed ? "inside" : "outside",
+  };
+}
+
+export function throwMotionSpecFromThrows(
+  cur: ParsedThrow,
+  landRef: ParsedThrow,
+): ThrowMotionSpec {
+  const { release, land } = throwGeometricEndpoints(cur, landRef);
+  return {
+    reversed: cur.reversed,
+    reversedHandMotion: false,
+    releaseGeometric: release,
+    landGeometric: land,
+  };
+}
+
 export function throwMotionSpec(
   pattern: PatternDefinition,
   throwValue: number,
@@ -46,33 +72,48 @@ export function throwMotionSpec(
   _startHand?: HandId,
 ): ThrowMotionSpec {
   if (pattern.family === "reverseCascade") {
-    return { reversed: true, reversedHandMotion: true };
+    const { release, land } = throwGeometricEndpoints(
+      { reversed: true },
+      { reversed: true },
+    );
+    return {
+      reversed: true,
+      reversedHandMotion: true,
+      releaseGeometric: release,
+      landGeometric: land,
+    };
   }
 
   if (pattern.family === "shower" && throwValue === 1) {
-    // Normal hand motion; ball inside→inside (feeds reversed 5/7 catch at geometric inside).
+    const { release, land } = throwGeometricEndpoints(
+      { reversed: false },
+      { reversed: true },
+    );
     return {
       reversed: false,
       reversedHandMotion: false,
-      releaseGeometric: "inside",
-      landGeometric: "inside",
+      releaseGeometric: release,
+      landGeometric: land,
     };
   }
 
   if (pattern.reverseHighThrow != null && throwValue === pattern.reverseHighThrow) {
-    // Reversed hand motion; ball outside→outside (lands where normal 1 catches).
+    const { release, land } = throwGeometricEndpoints(
+      { reversed: true },
+      { reversed: false },
+    );
     return {
       reversed: true,
       reversedHandMotion: true,
-      releaseGeometric: "outside",
-      landGeometric: "outside",
+      releaseGeometric: release,
+      landGeometric: land,
     };
   }
 
   return NORMAL_THROW_MOTION;
 }
 
-/** Per-throw motion for custom parsed siteswap (demo 4). */
+/** Per-throw motion when landing throw is not known (fallback: next in period). */
 export function throwMotionSpecForParsed(
   throws: ParsedThrow[],
   throwIndex: number,
@@ -80,20 +121,7 @@ export function throwMotionSpecForParsed(
   const period = throws.length;
   const cur = throws[((throwIndex % period) + period) % period];
   const next = throws[((throwIndex + 1) % period + period) % period];
-
-  const land: GeometricSide = next.reversed ? "inside" : "outside";
-  const release: GeometricSide = cur.reversed ? "outside" : "inside";
-
-  if (!cur.reversed && land === "outside") {
-    return NORMAL_THROW_MOTION;
-  }
-
-  return {
-    reversed: cur.reversed,
-    reversedHandMotion: cur.reversed,
-    releaseGeometric: release,
-    landGeometric: land,
-  };
+  return throwMotionSpecFromThrows(cur, next);
 }
 
 export function usesReversedThrow(

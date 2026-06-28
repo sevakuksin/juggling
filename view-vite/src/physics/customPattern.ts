@@ -1,14 +1,24 @@
 import { landingHand, oppositeHand, type HandId, type PhysicsConfig } from "./config";
 import { firstThrowBeat, throwBeatForHand } from "./hands";
+import { airTimeBeatsExact } from "./airTime";
 import {
   buildHandSchedules,
   buildShowerHandSchedules,
+  buildThrowTypeSegments,
+  type HandEvent,
+  type HandMotionSchedule,
   type HandMotionSchedules,
 } from "./handSchedule";
 import type { PatternDefinition } from "./patternCatalog";
-import { NORMAL_THROW_MOTION, throwMotionSpecForParsed } from "./throwMotion";
+import {
+  NORMAL_THROW_MOTION,
+  landGeometric,
+  releaseGeometric,
+  throwMotionSpecFromThrows,
+  type ThrowMotionSpec,
+} from "./throwMotion";
 import type { ParsedSiteswap, ParsedThrow } from "./siteswap";
-import { dwellBeatsForThrow } from "./twoHandThrowConfig";
+import { dwellForThrowHeight, dwellProfileMax, type DwellProfile } from "./twoHandThrowConfig";
 
 export interface CustomPatternRuntime {
   parsed: ParsedSiteswap;
@@ -83,6 +93,12 @@ export function isUniformReverse(parsed: ParsedSiteswap): boolean {
   return parsed.throws.every((t) => t.reversed && t.height === parsed.throws[0].height);
 }
 
+export function isUniformNormal(parsed: ParsedSiteswap): boolean {
+  if (parsed.throws.length === 0) return false;
+  const h = parsed.throws[0].height;
+  return parsed.throws.every((t) => !t.reversed && t.height === h);
+}
+
 /** Shower-like: every throw is reversed high or normal 1, period 2, alternating hands. */
 export function isShowerLike(parsed: ParsedSiteswap): boolean {
   if (parsed.period !== 2) return false;
@@ -123,14 +139,209 @@ export function ballCountFromParsed(parsed: ParsedSiteswap): number {
   return parsed.heights.reduce((a, b) => a + b, 0) / parsed.period;
 }
 
+export function landingThrowAtBeat(
+  runtime: CustomPatternRuntime,
+  throwBeat: number,
+): ParsedThrow | null {
+  const cur = scheduledThrowAtBeat(runtime, throwBeat);
+  if (!cur) return null;
+  return scheduledThrowAtBeat(runtime, throwBeat + cur.height);
+}
+
+export function motionSpecForCustomThrow(
+  runtime: CustomPatternRuntime,
+  throwIndex: number,
+  throwBeat: number,
+): ThrowMotionSpec {
+  const { parsed, startHand } = runtime;
+  const cur = throwAtIndex(runtime, throwIndex);
+  const landRef =
+    landingThrowAtBeat(runtime, throwBeat) ??
+    throwAtIndex(runtime, (throwIndex + 1) % parsed.period);
+  const spec = throwMotionSpecFromThrows(cur, landRef);
+
+  if (isUniformReverse(parsed)) {
+    return { ...spec, reversedHandMotion: true };
+  }
+
+  if (isShowerLike(parsed)) {
+    const hiHand = showerStartHand(parsed, startHand);
+    const hand = handForThrowIndex(runtime, throwIndex);
+    return { ...spec, reversedHandMotion: hand === hiHand };
+  }
+
+  return spec;
+}
+
+export type HandReversalMode = "all-reversed" | "all-normal" | "mixed";
+
+/** How reversal is distributed on one hand across its throws (including period wrap). */
+export function handReversalMode(
+  runtime: CustomPatternRuntime,
+  hand: HandId,
+): HandReversalMode {
+  const { period } = runtime.parsed;
+  const start = siteswapStartBeat(runtime);
+  let sawReversed = false;
+  let sawNormal = false;
+  for (let b = start; b < start + period * 2; b++) {
+    if (scheduledHandAtBeat(runtime.startHand, b) !== hand) continue;
+    if (!throwBeatForHand(hand, b)) continue;
+    const idx = throwIndexAtBeat(runtime, b);
+    if (idx < 0) continue;
+    const t = throwAtIndex(runtime, idx);
+    if (t.reversed) sawReversed = true;
+    else sawNormal = true;
+  }
+  if (sawReversed && !sawNormal) return "all-reversed";
+  if (sawNormal && !sawReversed) return "all-normal";
+  return "mixed";
+}
+
+/** Ball endpoints + reversed hand path for a scheduled throw beat. */
+export function motionSpecForHandAtBeat(
+  runtime: CustomPatternRuntime,
+  hand: HandId,
+  throwIndex: number,
+  throwBeat: number,
+): ThrowMotionSpec {
+  const spec = motionSpecForCustomThrow(runtime, throwIndex, throwBeat);
+  const cur = throwAtIndex(runtime, throwIndex);
+  const mode = handReversalMode(runtime, hand);
+  if (mode === "all-reversed") {
+    return { ...spec, reversedHandMotion: true };
+  }
+  if (mode === "mixed" && cur.reversed) {
+    return { ...spec, reversedHandMotion: true };
+  }
+  return { ...spec, reversedHandMotion: false };
+}
+
+function throwBeatAtOrBeforeHand(hand: HandId, beat: number): number | null {
+  const b = Math.floor(beat + 1e-9);
+  if (!Number.isFinite(b) || b < 0) return null;
+  if (throwBeatForHand(hand, b)) return b;
+  return throwBeatAtOrBeforeHand(hand, b - 1);
+}
+
+function revHMAtHandBeat(
+  runtime: CustomPatternRuntime,
+  hand: HandId,
+  beat: number,
+): boolean {
+  const throwBeat = throwBeatAtOrBeforeHand(hand, Math.floor(beat + 1e-9));
+  if (throwBeat == null) return false;
+  const idx = throwIndexAtBeat(runtime, throwBeat);
+  if (idx < 0) return false;
+  return motionSpecForHandAtBeat(runtime, hand, idx, throwBeat).reversedHandMotion ?? false;
+}
+
+/** Functional throw/catch events for one hand from parsed pattern timing. */
+function collectCustomHandEvents(
+  runtime: CustomPatternRuntime,
+  hand: HandId,
+  cfg: PhysicsConfig,
+  dwellProfile: DwellProfile,
+  scanBeats: number,
+): HandEvent[] {
+  const Tb = cfg.beatPeriodS;
+  const start = siteswapStartBeat(runtime);
+  const { startHand } = runtime;
+  const events: HandEvent[] = [];
+
+  for (let b = start; b < start + scanBeats; b++) {
+    if (scheduledHandAtBeat(startHand, b) !== hand) continue;
+    if (!throwBeatForHand(hand, b)) continue;
+    const idx = throwIndexAtBeat(runtime, b);
+    if (idx < 0) continue;
+    const spec = motionSpecForHandAtBeat(runtime, hand, idx, b);
+    const parsedThrow = throwAtIndex(runtime, idx);
+    events.push({
+      t: b * Tb,
+      kind: "throw",
+      functionalSide: releaseGeometric(spec),
+      reversedHandMotion: spec.reversedHandMotion,
+      throwReversed: parsedThrow.reversed,
+    });
+  }
+
+  for (let tb = start; tb < start + scanBeats; tb++) {
+    const throwHand = scheduledHandAtBeat(startHand, tb);
+    if (!throwHand || !throwBeatForHand(throwHand, tb)) continue;
+    const st = scheduledThrowAtBeat(runtime, tb);
+    if (!st || st.height <= 0) continue;
+    if (landingHand(throwHand, st.height) !== hand) continue;
+    const dwell = customDwellForThrow(runtime, dwellProfile, st.height);
+    const air = airTimeBeatsExact(st.height, dwell);
+    if (air < 1e-6) continue;
+    const idx = throwIndexAtBeat(runtime, tb);
+    const spec = motionSpecForCustomThrow(runtime, idx, tb);
+    const rawCatchBeat = tb + air;
+    const catchBeat = start + (((rawCatchBeat - start) % scanBeats) + scanBeats) % scanBeats;
+    events.push({
+      t: catchBeat * Tb,
+      kind: "catch",
+      functionalSide: landGeometric(spec),
+      reversedHandMotion: revHMAtHandBeat(runtime, hand, rawCatchBeat),
+    });
+  }
+
+  return events;
+}
+
+function buildCustomPatternHandSchedules(
+  runtime: CustomPatternRuntime,
+  dwellProfile: DwellProfile,
+  cfg: PhysicsConfig,
+): HandMotionSchedules | null {
+  const maxH = maxThrowHeight(runtime.parsed);
+  if (maxH <= 0) return null;
+
+  // True repeat of the hand-throw-type cycle: a period-P siteswap sampled every
+  // other beat repeats every 2·P/gcd(P,2) beats. Using maxH (uniform-pattern sizing)
+  // would mis-align the schedule and produce extra loops.
+  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+  const P = runtime.parsed.period;
+  const periodBeats = (2 * P) / gcd(P, 2);
+  const periodS = periodBeats * cfg.beatPeriodS;
+  const { startHand } = runtime;
+
+  function scheduleFor(hand: HandId): HandMotionSchedule {
+    const events = collectCustomHandEvents(runtime, hand, cfg, dwellProfile, periodBeats);
+    return {
+      hand,
+      periodS,
+      segments: buildThrowTypeSegments(events, periodS),
+      phaseOffsetS: 0,
+    };
+  }
+
+  return {
+    right: scheduleFor("right"),
+    left: scheduleFor("left"),
+    motionSpec: NORMAL_THROW_MOTION,
+    useVisualTheta: true,
+    motionSpecAtBeat: (hand, beat) => {
+      const st = scheduledThrowAtBeat(runtime, beat);
+      if (!st || scheduledHandAtBeat(startHand, beat) !== hand) {
+        return NORMAL_THROW_MOTION;
+      }
+      const idx = throwIndexAtBeat(runtime, beat);
+      return motionSpecForHandAtBeat(runtime, hand, idx, beat);
+    },
+  };
+}
+
 export function buildCustomHandSchedules(
   runtime: CustomPatternRuntime,
-  dwell: number,
+  dwellProfile: DwellProfile,
   cfg: PhysicsConfig,
 ): HandMotionSchedules | null {
   const { parsed, startHand } = runtime;
   const maxH = maxThrowHeight(parsed);
   if (maxH <= 0) return null;
+
+  const dwell = dwellForThrowHeight(dwellProfile, maxH);
 
   if (isShowerLike(parsed)) {
     const showerDef = asShowerPatternDefinition(parsed);
@@ -144,17 +355,11 @@ export function buildCustomHandSchedules(
     });
   }
 
-  const schedules = buildHandSchedules(maxH, dwell, cfg);
-  if (!schedules) return null;
-  schedules.motionSpecAtBeat = (hand, beat) => {
-    const st = scheduledThrowAtBeat(runtime, beat);
-    if (!st || scheduledHandAtBeat(startHand, beat) !== hand) {
-      return NORMAL_THROW_MOTION;
-    }
-    const idx = throwIndexAtBeat(runtime, beat);
-    return throwMotionSpecForParsed(parsed.throws, idx);
-  };
-  return schedules;
+  if (isUniformNormal(parsed)) {
+    return buildHandSchedules(maxH, dwell, cfg);
+  }
+
+  return buildCustomPatternHandSchedules(runtime, dwellProfile, cfg);
 }
 
 export function throwHeightForHand(runtime: CustomPatternRuntime, hand: HandId): number {
@@ -169,19 +374,21 @@ export function throwHeightForHand(runtime: CustomPatternRuntime, hand: HandId):
 
 export function customDwellForThrow(
   _runtime: CustomPatternRuntime,
-  dwell: number,
+  profile: DwellProfile,
   throwValue: number,
 ): number {
-  return dwellBeatsForThrow(dwell, throwValue);
+  return dwellForThrowHeight(profile, throwValue);
 }
 
 export function customDwellAfterCatch(
   runtime: CustomPatternRuntime,
-  dwell: number,
+  profile: DwellProfile,
   hand: HandId,
 ): number {
-  return dwellBeatsForThrow(dwell, throwHeightForHand(runtime, hand));
+  return dwellForThrowHeight(profile, throwHeightForHand(runtime, hand));
 }
+
+export { dwellProfileMax };
 
 export function customShowerHighHand(runtime: CustomPatternRuntime): HandId | null {
   if (!isShowerLike(runtime.parsed)) return null;
