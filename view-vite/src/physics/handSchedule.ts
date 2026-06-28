@@ -157,12 +157,6 @@ function visualThetaAtSide(side: GeometricSide): number {
   return side === "inside" ? handInsideTheta("right") : handOutsideTheta("right");
 }
 
-/** Reach `side` from `from` along the lower ellipse arc (through θ = 3π/2). */
-function lowerArcTheta(from: number, side: GeometricSide): number {
-  const target = visualThetaAtSide(side);
-  return side === "inside" ? unwrapForward(from, target) : unwrapBackward(from, target);
-}
-
 function transitProfile(toSide: GeometricSide): SegmentProfile {
   return toSide === "outside" ? "toCatch" : "toThrow";
 }
@@ -490,6 +484,11 @@ function segmentEndTheta(
   visualPlanning: boolean,
   afterSide?: GeometricSide,
 ): number {
+  // Transits unwrap forward (monotonically increasing θ) so the hand traces a
+  // continuous full ellipse: throw (inside) → over the top to the catch (outside)
+  // → under the bottom back to the throw. Reverse motion is the π−θ render mirror.
+  const outside = handOutsideTheta("right");
+  const inside = handInsideTheta("right");
   if (visualPlanning) {
     if (profile === "sameSideReturn") {
       return unwrapForward(from, visualThetaAtSide(targetSide ?? "inside"));
@@ -497,19 +496,19 @@ function segmentEndTheta(
     if (profile === "sameSidePassThrough") {
       const wp = visualThetaAtSide(targetSide ?? "inside");
       const endSide = afterSide ?? "outside";
-      return lowerArcTheta(unwrapForward(from, wp), endSide);
+      return unwrapForward(unwrapForward(from, wp), visualThetaAtSide(endSide));
     }
-    if (profile === "toCatch") return lowerArcTheta(from, "outside");
+    if (profile === "toCatch") return unwrapForward(from, outside);
     if (profile === "toThrow" || profile === "windBetweenThrows") {
-      return lowerArcTheta(from, "inside");
+      return unwrapForward(from, inside);
     }
   } else {
     if (profile === "sameSideReturn") {
       return unwrapForward(from, thetaForSide(targetSide ?? "inside"));
     }
-    if (profile === "toCatch") return lowerArcTheta(from, "outside");
+    if (profile === "toCatch") return unwrapForward(from, outside);
     if (profile === "toThrow" || profile === "windBetweenThrows") {
-      return lowerArcTheta(from, "inside");
+      return unwrapForward(from, inside);
     }
   }
   if (profile === "lapInside" || profile === "lapOutside") return from + TAU;
