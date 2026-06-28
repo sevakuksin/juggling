@@ -153,6 +153,8 @@ export const HAND_SCHEDULE = {
   showerCatchThenThrowFrac: 0.42,
   /** Same-side return: overshoot past current θ by this much (radians). */
   sameSideOvershootRad: (60 * Math.PI) / 180,
+  /** Reversal catch: overshoot past the throw point, returning through it at landing (radians). */
+  catchOvershootRad: (40 * Math.PI) / 180,
   /** Fraction of segment: ease out to overshoot / hold / ease back. */
   sameSideOutFrac: 0.38,
   sameSideHoldFrac: 0.14,

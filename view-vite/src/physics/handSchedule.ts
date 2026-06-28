@@ -666,14 +666,34 @@ export function buildThrowTypeSegments(events: HandEvent[], periodS: number): Ha
       { t: tStart, th: thS, slow: slowAt(i) },
     ];
 
+    const ov = HAND_SCHEDULE.catchOvershootRad;
+    const dirIn = dirOf(throws[i]);
+    const sweepSign = Math.sign(thE - thS) || 1;
+
     for (const c of catches) {
       const cBase = sideAt(c) === "inside" ? 0 : Math.PI;
       let v = cBase;
       while (v < lo - 1e-9) v += TAU;
       while (v > hi + 1e-9) v -= TAU;
       if (v < lo - 1e-9) v += TAU;
-      const dwell = Math.abs(v - thS) < 1e-6 || Math.abs(v - thE) < 1e-6;
-      kfs.push({ t: c.t, th: v, slow: dwell });
+      const atStart = Math.abs(v - thS) < 1e-6;
+      const atEnd = Math.abs(v - thE) < 1e-6;
+
+      if (atStart) {
+        // Overshoot past the throw point in the incoming direction, then cross
+        // back through it exactly when the ball lands, continuing into the reversal.
+        const tPrev = kfs[kfs.length - 1].t;
+        const tApex = (tPrev + c.t) / 2;
+        kfs.push({ t: tApex, th: thS + dirIn * ov, slow: true });
+        kfs.push({ t: c.t, th: thS, slow: false });
+      } else if (atEnd) {
+        // Reach the catch side, overshoot past it, return through it at the next throw.
+        kfs.push({ t: c.t, th: thE, slow: false });
+        const tApex = (c.t + tEnd) / 2;
+        kfs.push({ t: tApex, th: thE + sweepSign * ov, slow: true });
+      } else {
+        kfs.push({ t: c.t, th: v, slow: false });
+      }
     }
 
     kfs.push({ t: tEnd, th: thE, slow: slowAt(i + 1) });
