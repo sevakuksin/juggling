@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DemoLayout } from "@/components/DemoLayout";
 import { PatternPlayPanel } from "@/components/pattern/PatternPlayPanel";
 import { PatternTimingHud } from "@/components/pattern/PatternTimingHud";
@@ -115,13 +115,47 @@ export function PatternScene() {
     clock.setSimTime(0);
   }, [clock]);
 
+  // Keep the overlay panels scaling in lockstep with the animation: the SVG stage
+  // fills the scene and rescales with it, but the rem-sized controls do not. We
+  // observe the scene size and apply a matching transform scale to the rail,
+  // calibrated to the current size so the present look is preserved.
+  const sceneRef = useRef<HTMLDivElement>(null);
+  const railRef = useRef<HTMLDivElement>(null);
+  const baselineRef = useRef<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const rail = railRef.current;
+    if (!scene || !rail) return;
+    const MIN = 0.55;
+    const MAX = 1.8;
+    const apply = () => {
+      const w = scene.clientWidth;
+      const h = scene.clientHeight;
+      if (w === 0 || h === 0) return;
+      // Stacked mobile layout sizes itself; don't transform-scale there.
+      if (w <= 900) {
+        rail.style.setProperty("--ui-scale", "1");
+        return;
+      }
+      if (!baselineRef.current) baselineRef.current = { w, h };
+      const b = baselineRef.current;
+      const s = Math.min(w / b.w, h / b.h);
+      const clamped = Math.max(MIN, Math.min(MAX, s));
+      rail.style.setProperty("--ui-scale", clamped.toFixed(3));
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(scene);
+    return () => ro.disconnect();
+  }, []);
+
   const runtimeError = simResult.error;
 
   return (
     <DemoLayout
       animation={
-        <div className="pattern-scene">
-          <div className="pattern-overlay-rail">
+        <div className="pattern-scene" ref={sceneRef}>
+          <div className="pattern-overlay-rail" ref={railRef}>
             <PatternTimingHud
               beatPeriodS={beatPeriod}
               simTime={displayT}

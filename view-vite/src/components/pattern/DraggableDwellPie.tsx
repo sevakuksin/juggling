@@ -98,10 +98,10 @@ export function DraggableDwellPie({
       ? arcStart
       : arcStart + ((valuePct - minPct) / (maxPct - minPct)) * (arcEnd - arcStart);
 
-  const size = 102;
+  const size = 70;
   const cx = size / 2;
   const cy = size / 2;
-  const r = 40;
+  const r = 27;
   const startAngle = fracToAngle(arcStart);
   const endAngle = fracToAngle(arcEnd);
   const handleAngle = fracToAngle(valueFrac);
@@ -178,9 +178,9 @@ export function DraggableDwellPie({
         {fillArc && <path d={fillArc} className="dwell-pie-fill" pointerEvents="none" />}
         <BorderTick cx={cx} cy={cy} r={r} angle={startAngle} />
         <BorderTick cx={cx} cy={cy} r={r} angle={endAngle} />
-        <circle cx={hx} cy={hy} r={10} className="dwell-pie-handle" pointerEvents="none" />
-        <circle cx={cx} cy={cy} r={22} className="dwell-pie-center" pointerEvents="none" />
-        <text x={cx} y={cy + 5} className="dwell-pie-pct" textAnchor="middle" pointerEvents="none">
+        <circle cx={hx} cy={hy} r={7} className="dwell-pie-handle" pointerEvents="none" />
+        <circle cx={cx} cy={cy} r={15} className="dwell-pie-center" pointerEvents="none" />
+        <text x={cx} y={cy + 4} className="dwell-pie-pct" textAnchor="middle" pointerEvents="none">
           {Math.round(valuePct)}%
         </text>
         <rect
@@ -202,8 +202,8 @@ export function DraggableDwellPie({
 }
 
 function BorderTick({ cx, cy, r, angle }: { cx: number; cy: number; r: number; angle: number }) {
-  const inner = r - 12;
-  const outer = r + 3;
+  const inner = r - 8;
+  const outer = r + 2;
   return (
     <line
       className="dwell-pie-border"
