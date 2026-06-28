@@ -25,7 +25,7 @@ Open the URL shown (typically http://localhost:5173).
 
 ## Assets
 
-- Hand sprite: `public/sprites/left_hand.svg` (copied from `../assets/left_hand.svg`; right hand is mirrored)
+- Hand sprite: `public/sprites/left_hand.svg` (copied from `assets/left_hand.svg`; right hand is mirrored)
 - Ball sprite: `src/sprites/BallSprite.tsx` — CSS-customizable fill + optional throw number label
 
 ## Physics

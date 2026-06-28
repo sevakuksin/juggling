@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local / editor
+*.local
+.DS_Store
+.idea/
+.vscode/

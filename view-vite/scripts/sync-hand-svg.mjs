@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..");
-const src = join(root, "..", "assets", "left_hand.svg");
+const src = join(root, "assets", "left_hand.svg");
 const outDir = join(root, "public", "sprites");
 const out = join(outDir, "left_hand.svg");
 
